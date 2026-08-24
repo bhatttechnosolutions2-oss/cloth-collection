@@ -35,12 +35,10 @@ export const CategoryModal: React.FC<CategoryModalProps> = ({
 
   const filterOptions = [
     { key: 'all', label: 'ALL COLLECTIONS' },
-    { key: 'ethnic', label: 'ETHNIC EDIT' },
-    { key: 'western', label: 'WESTERN EDIT' },
-    { key: 'casual', label: 'CASUAL WEAR' },
-    { key: 'dress-materials', label: 'DRESS MATERIALS' },
-    { key: 'occasion', label: 'OCCASION WEAR' },
-    { key: 'trending', label: 'TRENDING' },
+    { key: 'tops', label: 'TOPS & SHIRTS' },
+    { key: 'jeans', label: 'JEANS & DENIMS' },
+    { key: 'kurtis', label: "KURTI'S & TUNICS" },
+    { key: 'bottoms', label: "GIRLS' BOTTOMS" },
   ];
 
   return (

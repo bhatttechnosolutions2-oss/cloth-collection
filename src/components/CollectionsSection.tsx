@@ -30,13 +30,13 @@ export const CollectionsSection: React.FC<CollectionsSectionProps> = ({ onSelect
           </h2>
 
           <p className="text-stone-700 text-sm sm:text-base leading-relaxed font-light">
-            From regal handcrafted ethnic wear to effortless modern western silhouettes,
-            explore our comprehensive departments curated for discerning women.
+            From chic Korean tops & premium denims to handcrafted everyday kurtis and tailored girls' bottoms,
+            explore our signature departments at Sadar Bazar Agra.
           </p>
         </div>
 
-        {/* Large Photographic Tiles (6 Major Categories) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
+        {/* Large Photographic Tiles (4 Signature Focus Categories) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 sm:gap-6">
           {categories.map((cat, index) => (
             <motion.div
               key={cat.id}

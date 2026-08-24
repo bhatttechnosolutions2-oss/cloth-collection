@@ -1,9 +1,9 @@
 export interface FashionItem {
   id: string;
   title: string;
-  category: 'ethnic' | 'western' | 'casual' | 'dress-materials' | 'occasion' | 'trending';
+  category: 'tops' | 'jeans' | 'kurtis' | 'bottoms' | 'ethnic' | 'western' | 'casual' | 'dress-materials' | 'occasion' | 'trending';
   categoryLabel: string;
-  tag: string; // 'NEW ARRIVAL' | 'EVERYDAY EDIT' | 'ETHNIC EDIT' | 'WEEKEND STYLE' | 'OCCASION EDIT' | 'JUST IN' | 'TRENDING' | 'NEW SEASON' | 'MOST LOVED'
+  tag: string; // 'NEW ARRIVAL' | 'EVERYDAY EDIT' | 'ETHNIC EDIT' | 'WEEKEND STYLE' | 'OCCASION EDIT' | 'JUST IN' | 'TRENDING' | 'NEW SEASON' | 'MOST LOVED' | 'INSTAGRAM IMPORT' | 'BESTSELLER'
   image: string;
   description: string;
   details: {
@@ -15,6 +15,7 @@ export interface FashionItem {
   };
   isFeaturedWeekly?: boolean;
   aspectRatio?: 'tall' | 'square' | 'wide';
+  instagramUrl?: string;
 }
 
 export interface CollectionCategory {

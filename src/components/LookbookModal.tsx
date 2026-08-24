@@ -166,14 +166,26 @@ export const LookbookModal: React.FC<LookbookModalProps> = ({ item, onClose }) =
                   <Phone className="w-3.5 h-3.5" />
                   <span>Call Store</span>
                 </a>
-                <button
-                  id="btn-modal-share"
-                  onClick={handleShare}
-                  className="inline-flex items-center justify-center gap-2 border border-[#D9D0C3] text-stone-700 hover:bg-[#EAE4DC] py-2.5 px-3 text-xs tracking-wider uppercase font-medium transition-colors"
-                >
-                  <Share2 className="w-3.5 h-3.5" />
-                  <span>Share Style</span>
-                </button>
+                {item.instagramUrl ? (
+                  <a
+                    id="btn-modal-instagram-link"
+                    href={item.instagramUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-2 border border-[#8B2626] text-[#8B2626] hover:bg-[#8B2626] hover:text-white py-2.5 px-3 text-xs tracking-wider uppercase font-semibold transition-colors"
+                  >
+                    <span>View on IG ↗</span>
+                  </a>
+                ) : (
+                  <button
+                    id="btn-modal-share"
+                    onClick={handleShare}
+                    className="inline-flex items-center justify-center gap-2 border border-[#D9D0C3] text-stone-700 hover:bg-[#EAE4DC] py-2.5 px-3 text-xs tracking-wider uppercase font-medium transition-colors"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                    <span>Share Style</span>
+                  </button>
+                )}
               </div>
             </div>
           </div>
