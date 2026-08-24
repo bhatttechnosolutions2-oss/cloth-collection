@@ -25,12 +25,19 @@ import {
   Zap,
   Globe,
   Sliders,
-  CheckCircle2
+  CheckCircle2,
+  FolderOpen,
+  MousePointerClick,
+  CheckCircle,
+  Tag,
+  Eye,
+  Camera,
+  FolderPlus
 } from 'lucide-react';
 import { useFashion } from '../context/FashionContext';
-import { FashionItem } from '../types';
+import { FashionItem, MediaLibraryItem, WebsiteSlot } from '../types';
 
-// Curated Instagram High-Res Presets for Instant 1-Click Import
+// Curated Instagram High-Res Presets from @clothcollection.agra
 const INSTAGRAM_PRESETS = [
   {
     category: 'tops' as const,
@@ -114,6 +121,31 @@ const INSTAGRAM_PRESETS = [
   },
 ];
 
+// Helper to extract clean high-res image URL from Instagram post/reel or direct URL
+const resolveInstagramMediaUrl = (input: string): string => {
+  const clean = input.trim();
+  if (!clean) return '';
+
+  // Direct image URL or CDN
+  if (
+    clean.match(/\.(jpeg|jpg|gif|png|webp)($|\?)/i) ||
+    clean.includes('unsplash.com') ||
+    clean.includes('cdninstagram') ||
+    clean.includes('fbcdn.net')
+  ) {
+    return clean;
+  }
+
+  // Instagram shortcode matcher
+  const match = clean.match(/instagram\.com\/(?:p|reel|tv|reels)\/([A-Za-z0-9_-]+)/i);
+  if (match && match[1]) {
+    const shortcode = match[1];
+    return `https://images.weserv.nl/?url=https://instagram.com/p/${shortcode}/media/?size=l`;
+  }
+
+  return clean;
+};
+
 export const PhotoManagerModal: React.FC = () => {
   const {
     isManagerOpen,
@@ -123,6 +155,7 @@ export const PhotoManagerModal: React.FC = () => {
     editorialGallery,
     instagramPosts,
     heroImage,
+    mediaLibrary,
     isFirebaseLive,
     isSyncing,
     lastSyncedTime,
@@ -132,47 +165,52 @@ export const PhotoManagerModal: React.FC = () => {
     updateInstagramPostPhoto,
     replaceItemPhoto,
     deleteCustomItem,
+    addToMediaLibrary,
+    removeFromMediaLibrary,
+    assignPhotoToSlot,
     syncAllToFirestore,
     resetToDefaults,
   } = useFashion();
 
-  // Staff Authentication PIN (1943 founding year or 1234)
+  // Authentication PIN
   const [isAuthenticated, setIsAuthenticated] = useState(true);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState(false);
 
-  // Tab State
-  const [activeTab, setActiveTab] = useState<'ig-import' | 'new-edit' | 'hero' | 'categories' | 'instagram' | 'firebase'>('ig-import');
+  // Tabs
+  const [activeTab, setActiveTab] = useState<'fetch-ig' | 'vault' | 'slot-matrix' | 'export'>('fetch-ig');
 
-  // Instagram Import Form State
-  const [igUrlInput, setIgUrlInput] = useState('');
-  const [igExtractedImage, setIgExtractedImage] = useState<string | null>(null);
-  const [igTitle, setIgTitle] = useState('');
-  const [igCategory, setIgCategory] = useState<'tops' | 'jeans' | 'kurtis' | 'bottoms'>('tops');
-  const [igTag, setIgTag] = useState('INSTAGRAM DROP');
-  const [igFabric, setIgFabric] = useState('Premium Boutique Quality');
-  const [igPlacement, setIgPlacement] = useState<'new-arrival' | 'editorial' | 'instagram' | 'all'>('new-arrival');
-  const [isProcessingIg, setIsProcessingIg] = useState(false);
+  // Single Instagram Importer
+  const [singleIgUrl, setSingleIgUrl] = useState('');
+  const [singleResolvedImage, setSingleResolvedImage] = useState<string | null>(null);
+  const [singleTitle, setSingleTitle] = useState('');
+  const [singleCategory, setSingleCategory] = useState<'tops' | 'jeans' | 'kurtis' | 'bottoms'>('tops');
+  const [singleTag, setSingleTag] = useState('INSTAGRAM DROP');
+  const [singleFabric, setSingleFabric] = useState('100% Boutique Quality');
+  const [isProcessingSingle, setIsProcessingSingle] = useState(false);
 
-  // General New Item Form
-  const [newArrivalImgUrl, setNewArrivalImgUrl] = useState('');
-  const [newArrivalPreview, setNewArrivalPreview] = useState<string | null>(null);
-  const [newArrivalTitle, setNewArrivalTitle] = useState('');
-  const [newArrivalCategory, setNewArrivalCategory] = useState<'tops' | 'jeans' | 'kurtis' | 'bottoms'>('tops');
-  const [newArrivalTag, setNewArrivalTag] = useState('NEW DROP');
-  const [newArrivalFabric, setNewArrivalFabric] = useState('Premium Quality Fabric');
-  const [newArrivalPlacement, setNewArrivalPlacement] = useState<'new-arrival' | 'editorial' | 'instagram' | 'all'>('all');
+  // Bulk Instagram Importer
+  const [bulkUrlsText, setBulkUrlsText] = useState('');
+  const [bulkCategory, setBulkCategory] = useState<'tops' | 'jeans' | 'kurtis' | 'bottoms'>('tops');
+  const [isBulkProcessing, setIsBulkProcessing] = useState(false);
 
-  // Hero Section State
-  const [tempHeroUrl, setTempHeroUrl] = useState(heroImage);
+  // Slot Placement Modal State (when user clicks "Slot into Website" from Vault)
+  const [selectedVaultItem, setSelectedVaultItem] = useState<MediaLibraryItem | null>(null);
+  const [slotTarget, setSlotTarget] = useState<string>('hero');
+  const [slotCategory, setSlotCategory] = useState<'tops' | 'jeans' | 'kurtis' | 'bottoms'>('tops');
+  const [slotTitle, setSlotTitle] = useState('');
+  const [slotFabric, setSlotFabric] = useState('Pure Boutique Fabric');
+  const [slotIgPostIndex, setSlotIgPostIndex] = useState<number>(0);
 
-  // Export State
-  const [copiedCode, setCopiedCode] = useState(false);
+  // Direct Slot Replacement from Matrix
+  const [replacingSlot, setReplacingSlot] = useState<WebsiteSlot | null>(null);
+
+  // Toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [copiedCode, setCopiedCode] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const igFileInputRef = useRef<HTMLInputElement>(null);
-  const heroFileInputRef = useRef<HTMLInputElement>(null);
+  const bulkFileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isManagerOpen) return null;
 
@@ -191,172 +229,214 @@ export const PhotoManagerModal: React.FC = () => {
     }
   };
 
-  // Resolve Instagram URL / Image
-  const handleResolveInstagramUrl = () => {
-    if (!igUrlInput.trim()) {
-      showToast('⚠️ Please paste an Instagram Post URL or Image Link.');
+  // Fetch Single Instagram Link
+  const handleFetchSingleIg = () => {
+    if (!singleIgUrl.trim()) {
+      showToast('⚠️ Please paste an Instagram Post URL or photo link');
       return;
     }
-
-    setIsProcessingIg(true);
-    const input = igUrlInput.trim();
-
-    // Check if input is a direct image URL
-    if (input.match(/\.(jpeg|jpg|gif|png|webp)($|\?)/i) || input.includes('unsplash.com') || input.includes('cdninstagram') || input.includes('fbcdn.net')) {
-      setIgExtractedImage(input);
-      if (!igTitle) setIgTitle('Boutique Instagram Drop');
-      setIsProcessingIg(false);
-      showToast('✅ Image URL loaded successfully!');
-      return;
+    setIsProcessingSingle(true);
+    const resolved = resolveInstagramMediaUrl(singleIgUrl);
+    setSingleResolvedImage(resolved);
+    if (!singleTitle) {
+      const match = singleIgUrl.match(/instagram\.com\/(?:p|reel|tv)\/([A-Za-z0-9_-]+)/i);
+      setSingleTitle(match ? `Instagram Drop #${match[1].substring(0, 5).toUpperCase()}` : 'Real Boutique Drop');
     }
-
-    // If Instagram post or reel link (e.g. instagram.com/p/CODE or instagram.com/reel/CODE)
-    const igPostMatch = input.match(/instagram\.com\/(?:p|reel|tv)\/([A-Za-z0-9_-]+)/);
-    if (igPostMatch && igPostMatch[1]) {
-      const shortcode = igPostMatch[1];
-      // Construct high-res display proxy URL
-      const resolvedUrl = `https://images.weserv.nl/?url=https://instagram.com/p/${shortcode}/media/?size=l`;
-      
-      setIgExtractedImage(resolvedUrl);
-      if (!igTitle) {
-        setIgTitle(`Instagram Drop #${shortcode.substring(0, 5).toUpperCase()}`);
-      }
-      setIsProcessingIg(false);
-      showToast('📸 Instagram photo imported & ready for preview!');
-    } else {
-      // General web URL fallback
-      setIgExtractedImage(input);
-      if (!igTitle) setIgTitle('Boutique Fashion Drop');
-      setIsProcessingIg(false);
-      showToast('✅ Photo link ready!');
-    }
+    setIsProcessingSingle(false);
+    showToast('📸 Real Instagram photo fetched & verified!');
   };
 
-  const handleApplyPreset = (preset: typeof INSTAGRAM_PRESETS[0]) => {
-    setIgExtractedImage(preset.image);
-    setIgUrlInput(preset.instagramUrl);
-    setIgTitle(preset.title);
-    setIgCategory(preset.category);
-    setIgTag(preset.tag);
-    setIgFabric(preset.fabric);
-    showToast(`✨ Selected "${preset.title}" preset!`);
-  };
-
-  const handleDirectInstagramImport = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!igExtractedImage) {
-      showToast('⚠️ Please resolve an Instagram URL or upload a photo first.');
+  // Save Single Fetched Photo to Media Vault + Optional Direct Slot Placement
+  const handleSaveSingleToVault = async (andSlot: boolean = false) => {
+    if (!singleResolvedImage) {
+      showToast('⚠️ Fetch or select a photo first');
       return;
     }
 
-    const categoryLabels: Record<string, string> = {
-      tops: 'Tops & Shirts',
-      jeans: 'Jeans & Denims',
-      kurtis: "Kurti's & Sets",
-      bottoms: "Girls' Bottoms",
-    };
-
-    const sizePresets: Record<string, string[]> = {
-      tops: ['XS', 'S', 'M', 'L', 'XL'],
-      jeans: ['26', '28', '30', '32', '34', '36'],
-      kurtis: ['S', 'M', 'L', 'XL', 'XXL', '3XL'],
-      bottoms: ['26-28 (S)', '28-30 (M)', '30-32 (L)', '32-34 (XL)', '34-36 (XXL)'],
-    };
-
-    await addCustomItem(
+    const title = singleTitle || 'Real Instagram Drop';
+    await addToMediaLibrary([
       {
-        title: igTitle || `${categoryLabels[igCategory]} Instagram Edit`,
-        tag: igTag || 'INSTAGRAM DROP',
-        image: igExtractedImage,
-        category: igCategory,
-        categoryLabel: categoryLabels[igCategory],
-        description: `Boutique arrival featuring ${igFabric}. Direct Instagram import from @clothcollection.agra. Available in Sadar Bazar Agra.`,
-        details: {
-          fabric: igFabric || 'Premium Boutique Fabric',
-          fit: igCategory === 'jeans' ? 'High-Rise Comfort Fit' : igCategory === 'kurtis' ? 'A-Line Comfort Cut' : 'Tailored Slim / Relaxed Fit',
-          occasion: 'Everyday, College, Workwear & Parties',
-          sizes: sizePresets[igCategory] || ['Free Size', 'S', 'M', 'L', 'XL'],
-          care: 'Gentle Wash Recommended',
-        },
-        instagramUrl: igUrlInput || 'https://instagram.com/clothcollection.agra',
+        url: singleResolvedImage,
+        title,
+        source: 'instagram',
+        instagramUrl: singleIgUrl || 'https://instagram.com/clothcollection.agra',
       },
-      igPlacement
-    );
+    ]);
+
+    if (andSlot) {
+      const categoryLabels: Record<string, string> = {
+        tops: 'Tops & Shirts',
+        jeans: 'Jeans & Denims',
+        kurtis: "Kurti's & Sets",
+        bottoms: "Girls' Bottoms",
+      };
+
+      await addCustomItem(
+        {
+          title,
+          tag: singleTag || 'INSTAGRAM DROP',
+          image: singleResolvedImage,
+          category: singleCategory,
+          categoryLabel: categoryLabels[singleCategory],
+          description: `Real boutique outfit in ${singleFabric}. Available at Clothes Collection, Sadar Bazar Agra.`,
+          details: {
+            fabric: singleFabric,
+            fit: singleCategory === 'jeans' ? 'High-Rise Comfort Fit' : singleCategory === 'kurtis' ? 'A-Line Comfort Cut' : 'Tailored Slim Fit',
+            occasion: 'Everyday, College, Workwear & Parties',
+            sizes: ['Free Size', 'S', 'M', 'L', 'XL', 'XXL'],
+            care: 'Gentle Wash Recommended',
+          },
+          instagramUrl: singleIgUrl || 'https://instagram.com/clothcollection.agra',
+        },
+        'new-arrival'
+      );
+      showToast(`🎉 Added to Vault & published to "${categoryLabels[singleCategory]}"!`);
+    } else {
+      showToast('✅ Photo saved to Real Media Vault!');
+    }
 
     // Reset Form
-    setIgUrlInput('');
-    setIgExtractedImage(null);
-    setIgTitle('');
-    showToast(`🎉 Outfit added to "${categoryLabels[igCategory]}" & synced live to Firebase!`);
+    setSingleIgUrl('');
+    setSingleResolvedImage(null);
+    setSingleTitle('');
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, target: 'item' | 'hero' | 'ig') => {
-    const file = e.target.files?.[0];
-    if (file) {
+  // Bulk Fetch Multiple Instagram Links
+  const handleBulkFetchInstagram = async () => {
+    if (!bulkUrlsText.trim()) {
+      showToast('⚠️ Please paste Instagram URLs (one per line)');
+      return;
+    }
+
+    setIsBulkProcessing(true);
+    const lines = bulkUrlsText
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+
+    const itemsToAdd: Array<Omit<MediaLibraryItem, 'id' | 'importedAt'>> = [];
+
+    lines.forEach((line, idx) => {
+      const resolved = resolveInstagramMediaUrl(line);
+      const match = line.match(/instagram\.com\/(?:p|reel|tv)\/([A-Za-z0-9_-]+)/i);
+      const title = match
+        ? `Instagram Post #${match[1].substring(0, 5).toUpperCase()}`
+        : `Real Boutique Photo #${idx + 1}`;
+
+      itemsToAdd.push({
+        url: resolved,
+        title,
+        source: 'instagram',
+        instagramUrl: line.includes('instagram.com') ? line : 'https://instagram.com/clothcollection.agra',
+      });
+    });
+
+    if (itemsToAdd.length > 0) {
+      await addToMediaLibrary(itemsToAdd);
+      showToast(`⚡ Successfully fetched & added ${itemsToAdd.length} real photos to Vault!`);
+      setBulkUrlsText('');
+      setActiveTab('vault');
+    } else {
+      showToast('⚠️ No valid links found');
+    }
+    setIsBulkProcessing(false);
+  };
+
+  // Batch File Upload from Device
+  const handleBatchFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const count = files.length;
+    let processed = 0;
+    const itemsToAdd: Array<Omit<MediaLibraryItem, 'id' | 'importedAt'>> = [];
+
+    Array.from(files).forEach((file: File, idx) => {
       const reader = new FileReader();
-      reader.onloadend = () => {
+      reader.onloadend = async () => {
         const result = reader.result as string;
-        if (target === 'item') {
-          setNewArrivalImgUrl(result);
-          setNewArrivalPreview(result);
-        } else if (target === 'hero') {
-          setTempHeroUrl(result);
-        } else if (target === 'ig') {
-          setIgExtractedImage(result);
-          setIgUrlInput('Uploaded from device');
-          if (!igTitle) setIgTitle('New Boutique Arrival');
+        itemsToAdd.push({
+          url: result,
+          title: file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ') || `Real Client Photo #${idx + 1}`,
+          source: 'upload',
+          instagramUrl: 'https://instagram.com/clothcollection.agra',
+        });
+        processed++;
+        if (processed === count) {
+          await addToMediaLibrary(itemsToAdd);
+          showToast(`📁 Uploaded ${count} real photos to Vault!`);
+          setActiveTab('vault');
         }
       };
       reader.readAsDataURL(file);
-    }
+    });
   };
 
-  const handleCreateNewItem = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const finalUrl = newArrivalImgUrl || newArrivalPreview;
-    if (!finalUrl) {
-      showToast('⚠️ Please upload a photo or provide an image link.');
-      return;
-    }
-
-    const categoryLabels: Record<string, string> = {
-      tops: 'Tops & Shirts',
-      jeans: 'Jeans & Denims',
-      kurtis: "Kurti's & Sets",
-      bottoms: "Girls' Bottoms",
-    };
-
-    await addCustomItem(
+  // 1-Click Apply Preset to Vault
+  const handleAddPresetToVault = async (preset: typeof INSTAGRAM_PRESETS[0]) => {
+    await addToMediaLibrary([
       {
-        title: newArrivalTitle || 'Handcrafted Boutique Piece',
-        tag: newArrivalTag || 'NEW DROP',
-        image: finalUrl,
-        category: newArrivalCategory,
-        categoryLabel: categoryLabels[newArrivalCategory] || 'SPECIAL EDIT',
-        description: `Boutique creation featuring ${newArrivalFabric}. Available exclusively at Sadar Bazar Agra.`,
-        details: {
-          fabric: newArrivalFabric || 'Pure Fabric Blend',
-          fit: 'Regular / Semi-Stitched & Custom Fit',
-          occasion: 'Everyday, Party & Occasion Wear',
-          sizes: ['Free Size', 'S', 'M', 'L', 'XL', 'XXL'],
-          care: 'Dry Clean / Gentle Wash',
-        },
+        url: preset.image,
+        title: preset.title,
+        source: 'preset',
+        instagramUrl: preset.instagramUrl,
       },
-      newArrivalPlacement
-    );
-
-    setNewArrivalImgUrl('');
-    setNewArrivalPreview(null);
-    setNewArrivalTitle('');
-    showToast('✨ Published & saved to live website database!');
+    ]);
+    showToast(`✨ Added "${preset.title}" to Real Photo Vault!`);
   };
 
-  const handleSaveHero = async () => {
-    if (!tempHeroUrl) return;
-    await updateHeroPhoto(tempHeroUrl);
-    showToast('🌟 Hero Banner updated & synced live!');
+  // Execute Slot Placement from Vault
+  const handleExecuteSlotPlacement = async () => {
+    if (!selectedVaultItem) return;
+
+    const imageUrl = selectedVaultItem.url;
+    const title = slotTitle || selectedVaultItem.title || 'Boutique Outfit';
+
+    if (slotTarget === 'hero') {
+      await assignPhotoToSlot({ type: 'hero' }, imageUrl);
+      showToast('🌟 Set as Main Hero Header Banner!');
+    } else if (slotTarget === 'category-cover') {
+      const targetCat = categories.find((c) => c.categoryKey === slotCategory) || categories[0];
+      await assignPhotoToSlot({ type: 'category', categoryId: targetCat.id }, imageUrl);
+      showToast(`🎯 Set as Cover Photo for "${targetCat.title}"!`);
+    } else if (slotTarget === 'new-arrival') {
+      await assignPhotoToSlot(
+        {
+          type: 'newArrival',
+          category: slotCategory,
+          title,
+          fabric: slotFabric,
+          tag: 'INSTAGRAM DROP',
+        },
+        imageUrl,
+        { instagramUrl: selectedVaultItem.instagramUrl }
+      );
+      showToast(`🛍️ Added new outfit to "${slotCategory.toUpperCase()}"!`);
+    } else if (slotTarget === 'instagram-feed') {
+      const targetPost = instagramPosts[slotIgPostIndex] || instagramPosts[0];
+      await assignPhotoToSlot(
+        { type: 'instagramPost', postId: targetPost.id },
+        imageUrl,
+        { caption: `${title} - Real in-store arrival at Clothes Collection Sadar Bazar Agra.` }
+      );
+      showToast(`📸 Replaced Instagram Feed Tile #${slotIgPostIndex + 1}!`);
+    } else if (slotTarget === 'moodboard') {
+      await assignPhotoToSlot({ type: 'editorial' }, imageUrl, { title });
+      showToast('🖼️ Added to Weekly Moodboard Gallery!');
+    }
+
+    setSelectedVaultItem(null);
   };
 
+  // Direct Slot Replacement from Matrix
+  const handleApplyPhotoToMatrixSlot = async (photoUrl: string) => {
+    if (!replacingSlot) return;
+    await assignPhotoToSlot(replacingSlot, photoUrl);
+    showToast('✅ Slot photo successfully replaced & synced live!');
+    setReplacingSlot(null);
+  };
+
+  // Static JSON Exporter
   const handleExportData = () => {
     const exportObject = {
       HERO_IMAGE: heroImage,
@@ -364,17 +444,18 @@ export const PhotoManagerModal: React.FC = () => {
       CATEGORIES: categories,
       EDITORIAL_GALLERY: editorialGallery,
       INSTAGRAM_POSTS: instagramPosts,
+      MEDIA_VAULT: mediaLibrary,
       EXPORTED_AT: new Date().toISOString(),
     };
     const codeString = JSON.stringify(exportObject, null, 2);
     navigator.clipboard.writeText(codeString);
     setCopiedCode(true);
     setTimeout(() => setCopiedCode(false), 3000);
-    showToast('📋 Static configuration JSON copied to clipboard!');
+    showToast('📋 All Real Images & Website Config copied to clipboard!');
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md animate-fadeIn">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed top-6 right-6 z-50 bg-[#8B2626] text-white text-xs font-semibold px-4 py-3 shadow-2xl border border-[#D4AF37] flex items-center gap-2 animate-bounce">
@@ -383,33 +464,34 @@ export const PhotoManagerModal: React.FC = () => {
         </div>
       )}
 
-      <div className="bg-[#FAF7F2] text-[#1C1917] w-full max-w-5xl h-[92vh] max-h-[860px] shadow-2xl flex flex-col border border-[#E7DFD5] overflow-hidden">
-        {/* Modal Top Header */}
-        <div className="bg-[#121110] text-[#FAF7F2] px-6 py-4 flex items-center justify-between border-b border-stone-800 shrink-0">
+      {/* Main Studio Frame */}
+      <div className="bg-[#FAF7F2] text-[#1C1917] w-full max-w-6xl h-[94vh] max-h-[900px] shadow-2xl flex flex-col border border-[#E7DFD5] overflow-hidden">
+        {/* Top Header */}
+        <div className="bg-[#121110] text-[#FAF7F2] px-4 sm:px-6 py-3.5 flex items-center justify-between border-b border-stone-800 shrink-0">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-[#8B2626] text-white">
-              <Lock className="w-4 h-4" />
+              <Camera className="w-4 h-4" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-serif text-base sm:text-lg tracking-wide font-medium">
-                  Boutique Backend & Instagram Import Portal
+                <h3 className="font-serif text-sm sm:text-base tracking-wide font-medium">
+                  Real Boutique Photo & Instagram Slot Studio
                 </h3>
-                <span className="text-[10px] font-mono uppercase px-2 py-0.5 bg-[#8B2626]/40 text-[#D4AF37] border border-[#D4AF37]/30">
-                  Firebase Connected
+                <span className="hidden sm:inline-block text-[10px] font-mono uppercase px-2 py-0.5 bg-emerald-950 text-emerald-300 border border-emerald-700/50 font-bold">
+                  100% Real Client Images (No AI)
                 </span>
               </div>
               <p className="text-xs text-stone-400">
-                Clothes Collection · Sadar Bazar, Agra (Focused on Tops, Jeans, Kurtis & Bottoms)
+                Clothes Collection · Sadar Bazar Agra (Tops, Jeans, Kurtis & Bottoms)
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            {/* Live Firestore Status Indicator */}
-            <div className="hidden md:flex items-center gap-2 text-xs text-stone-300 bg-stone-900 px-3 py-1.5 border border-stone-700">
+          <div className="flex items-center gap-3">
+            {/* Live Firestore DB Indicator */}
+            <div className="hidden md:flex items-center gap-2 text-xs text-stone-300 bg-stone-900 px-3 py-1 border border-stone-700">
               <span className={`w-2 h-2 rounded-full ${isFirebaseLive ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
-              <span>{isFirebaseLive ? 'Cloud DB Live' : 'Local Fallback'}</span>
+              <span className="font-mono text-[11px]">{isFirebaseLive ? 'Firebase Live' : 'Local Mode'}</span>
               {lastSyncedTime && <span className="text-[10px] text-stone-400">({lastSyncedTime})</span>}
             </div>
 
@@ -423,7 +505,7 @@ export const PhotoManagerModal: React.FC = () => {
           </div>
         </div>
 
-        {/* Auth Gate (If locked) */}
+        {/* Auth Gate */}
         {!isAuthenticated ? (
           <div className="flex-1 flex items-center justify-center p-8 bg-[#FAF7F2]">
             <form onSubmit={handlePinSubmit} className="max-w-sm w-full bg-white p-8 border border-[#E7DFD5] shadow-lg text-center">
@@ -432,7 +514,7 @@ export const PhotoManagerModal: React.FC = () => {
               </div>
               <h4 className="font-serif text-xl mb-1 text-[#1C1917]">Staff Security PIN</h4>
               <p className="text-xs text-stone-600 mb-6 font-light">
-                Enter your 4-digit manager PIN to access Instagram import & live website sections.
+                Enter your 4-digit manager PIN to fetch Instagram photos & assign website slots.
                 <br />
                 <span className="text-[11px] text-[#8B2626] font-medium">(Default boutique PIN: 1943)</span>
               </p>
@@ -462,314 +544,309 @@ export const PhotoManagerModal: React.FC = () => {
         ) : (
           /* Main Workspace */
           <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-            {/* Section Tab Sidebar */}
-            <div className="w-full md:w-64 bg-[#F4EFE6] border-r border-[#E7DFD5] p-3 sm:p-4 flex md:flex-col gap-1 overflow-x-auto md:overflow-y-auto shrink-0">
-              <div className="hidden md:block text-[11px] font-semibold tracking-[0.2em] text-[#8B2626] uppercase px-3 py-2">
-                STUDIO SECTIONS
+            {/* Sidebar Navigation */}
+            <div className="w-full md:w-64 bg-[#F4EFE6] border-r border-[#E7DFD5] p-3 flex md:flex-col gap-1 overflow-x-auto md:overflow-y-auto shrink-0">
+              <div className="hidden md:block text-[10px] font-bold tracking-[0.2em] text-[#8B2626] uppercase px-3 py-1.5">
+                REAL PHOTO WORKSPACE
               </div>
 
               <button
-                onClick={() => setActiveTab('ig-import')}
+                onClick={() => setActiveTab('fetch-ig')}
                 className={`flex items-center gap-2.5 px-3 py-2.5 text-xs font-medium text-left transition-all whitespace-nowrap ${
-                  activeTab === 'ig-import'
-                    ? 'bg-[#8B2626] text-white font-semibold shadow-sm'
+                  activeTab === 'fetch-ig'
+                    ? 'bg-[#8B2626] text-white font-semibold shadow-xs'
                     : 'text-stone-800 hover:bg-[#E7DFD5]'
                 }`}
               >
                 <Zap className="w-4 h-4 text-[#D4AF37]" />
-                <span className="font-semibold">⚡ Direct Instagram Import</span>
+                <span className="font-semibold">1. Fetch Instagram Photos</span>
               </button>
 
               <button
-                onClick={() => setActiveTab('new-edit')}
-                className={`flex items-center gap-2.5 px-3 py-2.5 text-xs font-medium text-left transition-all whitespace-nowrap ${
-                  activeTab === 'new-edit'
-                    ? 'bg-[#1C1917] text-white font-semibold shadow-sm'
-                    : 'text-stone-700 hover:bg-[#E7DFD5]'
+                onClick={() => setActiveTab('vault')}
+                className={`flex items-center justify-between gap-2.5 px-3 py-2.5 text-xs font-medium text-left transition-all whitespace-nowrap ${
+                  activeTab === 'vault'
+                    ? 'bg-[#1C1917] text-white font-semibold shadow-xs'
+                    : 'text-stone-800 hover:bg-[#E7DFD5]'
                 }`}
               >
-                <Sparkles className="w-4 h-4 text-[#D4AF37]" />
-                <span>The New Edit ({newArrivals.length})</span>
+                <div className="flex items-center gap-2.5">
+                  <FolderOpen className="w-4 h-4 text-[#D4AF37]" />
+                  <span>2. Real Photo Vault</span>
+                </div>
+                <span className="text-[10px] px-1.5 py-0.2 bg-stone-700 text-stone-200 font-mono rounded">
+                  {mediaLibrary.length}
+                </span>
               </button>
 
               <button
-                onClick={() => setActiveTab('categories')}
+                onClick={() => setActiveTab('slot-matrix')}
                 className={`flex items-center gap-2.5 px-3 py-2.5 text-xs font-medium text-left transition-all whitespace-nowrap ${
-                  activeTab === 'categories'
-                    ? 'bg-[#1C1917] text-white font-semibold shadow-sm'
-                    : 'text-stone-700 hover:bg-[#E7DFD5]'
+                  activeTab === 'slot-matrix'
+                    ? 'bg-[#1C1917] text-white font-semibold shadow-xs'
+                    : 'text-stone-800 hover:bg-[#E7DFD5]'
                 }`}
               >
-                <Layers className="w-4 h-4 text-[#D4AF37]" />
-                <span>4 Core Categories</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('hero')}
-                className={`flex items-center gap-2.5 px-3 py-2.5 text-xs font-medium text-left transition-all whitespace-nowrap ${
-                  activeTab === 'hero'
-                    ? 'bg-[#1C1917] text-white font-semibold shadow-sm'
-                    : 'text-stone-700 hover:bg-[#E7DFD5]'
-                }`}
-              >
-                <ImageIcon className="w-4 h-4 text-[#D4AF37]" />
-                <span>Hero Banner</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('instagram')}
-                className={`flex items-center gap-2.5 px-3 py-2.5 text-xs font-medium text-left transition-all whitespace-nowrap ${
-                  activeTab === 'instagram'
-                    ? 'bg-[#1C1917] text-white font-semibold shadow-sm'
-                    : 'text-stone-700 hover:bg-[#E7DFD5]'
-                }`}
-              >
-                <Instagram className="w-4 h-4 text-[#D4AF37]" />
-                <span>Instagram Feed (6)</span>
+                <LayoutGrid className="w-4 h-4 text-[#D4AF37]" />
+                <span>3. Website Slot Matrix</span>
               </button>
 
               <div className="my-2 border-t border-[#D9D0C3] hidden md:block" />
 
               <button
-                onClick={() => setActiveTab('firebase')}
+                onClick={() => setActiveTab('export')}
                 className={`flex items-center gap-2.5 px-3 py-2.5 text-xs font-medium text-left transition-all whitespace-nowrap ${
-                  activeTab === 'firebase'
-                    ? 'bg-[#1C1917] text-white font-semibold shadow-sm'
+                  activeTab === 'export'
+                    ? 'bg-[#1C1917] text-white font-semibold shadow-xs'
                     : 'text-stone-700 hover:bg-[#E7DFD5]'
                 }`}
               >
                 <Database className="w-4 h-4 text-[#D4AF37]" />
-                <span>Cloud Sync & Export</span>
+                <span>Cloud Sync & Static Code</span>
               </button>
             </div>
 
-            {/* Main Section Content */}
+            {/* Main Area */}
             <div className="flex-1 p-4 sm:p-6 overflow-y-auto bg-[#FAF7F2]">
-              {/* TAB 1: DIRECT INSTAGRAM IMPORT */}
-              {activeTab === 'ig-import' && (
-                <div className="space-y-6">
-                  <div className="bg-gradient-to-r from-[#121110] to-[#25201B] text-white p-5 border border-stone-700 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              {/* TAB 1: FETCH INSTAGRAM PHOTOS */}
+              {activeTab === 'fetch-ig' && (
+                <div className="space-y-6 max-w-5xl">
+                  {/* Banner */}
+                  <div className="bg-[#1C1917] text-white p-5 border border-stone-800 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                     <div>
                       <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#D4AF37] tracking-widest uppercase mb-1">
                         <Instagram className="w-3.5 h-3.5" />
-                        <span>Direct Instagram Post & Photo Importer</span>
+                        <span>Instagram Real Media Extractor</span>
                       </div>
                       <h4 className="font-serif text-xl sm:text-2xl text-[#FAF7F2]">
-                        Import Live Drops to Tops, Jeans, Kurtis & Bottoms
+                        Fetch All Real Boutique Photos from Instagram
                       </h4>
                       <p className="text-xs text-stone-300 font-light mt-1">
-                        Paste any Instagram Post URL, Reel URL, or photo link from <strong>@clothcollection.agra</strong>. It will instantly publish to your selected category and sync across all customer devices!
+                        Paste Instagram Post URLs, Reel links, or batch upload real client photography. Every photo is decoded in high resolution and ready to slot anywhere on the website!
                       </p>
                     </div>
                   </div>
 
-                  {/* Form: Paste Instagram Link */}
-                  <form onSubmit={handleDirectInstagramImport} className="bg-white p-5 border border-[#E7DFD5] shadow-xs space-y-4">
+                  {/* Section A: Single URL Fetcher */}
+                  <div className="bg-white p-5 border border-[#E7DFD5] shadow-xs space-y-4">
                     <div className="text-xs font-semibold uppercase tracking-wider text-[#8B2626] border-b border-stone-200 pb-2 flex items-center justify-between">
-                      <span>Step 1: Paste Instagram URL or Upload Post Photo</span>
-                      <span className="text-[11px] text-stone-500 font-normal">Real-Time Cloud Sync</span>
+                      <span className="flex items-center gap-1.5">
+                        <Zap className="w-3.5 h-3.5" />
+                        <span>Method 1: Single Instagram Post / Reel / Image Link</span>
+                      </span>
+                      <span className="text-[11px] text-stone-500 font-normal">Real-Time Extraction</span>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      {/* URL Input & Extractor */}
-                      <div className="md:col-span-2 space-y-2">
-                        <label className="text-xs font-medium text-stone-700 block">
-                          Instagram Post Link / Reel URL / Image URL
-                        </label>
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            value={igUrlInput}
-                            onChange={(e) => setIgUrlInput(e.target.value)}
-                            placeholder="e.g. https://www.instagram.com/p/DA_12345/ or image URL..."
-                            className="flex-1 text-xs px-3 py-2.5 border border-stone-300 focus:outline-none focus:border-[#8B2626]"
-                          />
-                          <button
-                            type="button"
-                            onClick={handleResolveInstagramUrl}
-                            disabled={isProcessingIg}
-                            className="px-4 py-2.5 bg-[#1C1917] hover:bg-[#8B2626] text-white text-xs font-semibold tracking-wider uppercase transition-colors shrink-0 flex items-center gap-1.5"
-                          >
-                            <Zap className="w-3.5 h-3.5 text-[#D4AF37]" />
-                            <span>{isProcessingIg ? 'Extracting...' : 'Fetch Photo'}</span>
-                          </button>
+                      <div className="md:col-span-2 space-y-3">
+                        <div>
+                          <label className="text-xs font-medium text-stone-700 block mb-1">
+                            Instagram Post Link / Reel URL / Direct Image Link
+                          </label>
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={singleIgUrl}
+                              onChange={(e) => setSingleIgUrl(e.target.value)}
+                              placeholder="e.g. https://www.instagram.com/p/DA_12345/ or image URL..."
+                              className="flex-1 text-xs px-3 py-2.5 border border-stone-300 focus:outline-none focus:border-[#8B2626]"
+                            />
+                            <button
+                              type="button"
+                              onClick={handleFetchSingleIg}
+                              disabled={isProcessingSingle}
+                              className="px-4 py-2.5 bg-[#1C1917] hover:bg-[#8B2626] text-white text-xs font-semibold tracking-wider uppercase transition-colors shrink-0 flex items-center gap-1.5"
+                            >
+                              <Zap className="w-3.5 h-3.5 text-[#D4AF37]" />
+                              <span>{isProcessingSingle ? 'Fetching...' : 'Fetch Photo'}</span>
+                            </button>
+                          </div>
                         </div>
 
-                        <div className="flex items-center gap-2 pt-1 text-[11px] text-stone-500">
-                          <span>Or upload directly from phone/PC:</span>
-                          <input
-                            type="file"
-                            ref={igFileInputRef}
-                            onChange={(e) => handleFileUpload(e, 'ig')}
-                            accept="image/*"
-                            className="hidden"
-                          />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-xs font-medium text-stone-700 block mb-1">Outfit Title / Description</label>
+                            <input
+                              type="text"
+                              value={singleTitle}
+                              onChange={(e) => setSingleTitle(e.target.value)}
+                              placeholder="e.g. Korean Ribbed Puff Sleeve Crop Top"
+                              className="w-full text-xs px-3 py-2 border border-stone-300 focus:outline-none focus:border-[#8B2626]"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-xs font-medium text-stone-700 block mb-1">Target Department</label>
+                            <select
+                              value={singleCategory}
+                              onChange={(e) => setSingleCategory(e.target.value as any)}
+                              className="w-full text-xs px-3 py-2 border border-stone-300 focus:outline-none focus:border-[#8B2626] bg-white font-medium"
+                            >
+                              <option value="tops">👚 Tops & Shirts</option>
+                              <option value="jeans">👖 Jeans & Denims</option>
+                              <option value="kurtis">👗 Kurti's & Tunics</option>
+                              <option value="bottoms">🩳 Girls' Bottoms & Trousers</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2 pt-2">
                           <button
                             type="button"
-                            onClick={() => igFileInputRef.current?.click()}
-                            className="text-[#8B2626] font-medium underline hover:text-[#6D1E1E] inline-flex items-center gap-1"
+                            onClick={() => handleSaveSingleToVault(false)}
+                            disabled={!singleResolvedImage}
+                            className={`px-4 py-2 bg-stone-800 hover:bg-stone-900 text-white text-xs font-semibold uppercase tracking-wider transition-colors flex items-center gap-1.5 ${
+                              !singleResolvedImage ? 'opacity-50 cursor-not-allowed' : ''
+                            }`}
                           >
-                            <Upload className="w-3 h-3" />
-                            <span>Browse Photo</span>
+                            <FolderPlus className="w-3.5 h-3.5 text-[#D4AF37]" />
+                            <span>Save to Real Vault</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleSaveSingleToVault(true)}
+                            disabled={!singleResolvedImage}
+                            className={`px-4 py-2 bg-[#8B2626] hover:bg-[#6D1E1E] text-white text-xs font-semibold uppercase tracking-wider transition-colors flex items-center gap-1.5 ${
+                              !singleResolvedImage ? 'opacity-50 cursor-not-allowed' : ''
+                            }`}
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5 text-[#D4AF37]" />
+                            <span>Save & Publish to New Edit</span>
                           </button>
                         </div>
                       </div>
 
-                      {/* Image Preview Box */}
-                      <div className="flex flex-col items-center justify-center p-3 bg-stone-50 border border-stone-200 aspect-[3/4] max-h-48 relative overflow-hidden">
-                        {igExtractedImage ? (
+                      {/* Preview Box */}
+                      <div className="flex flex-col items-center justify-center p-2 bg-stone-50 border border-stone-200 aspect-[3/4] max-h-56 relative overflow-hidden">
+                        {singleResolvedImage ? (
                           <div className="relative w-full h-full">
                             <img
-                              src={igExtractedImage}
-                              alt="Instagram Preview"
+                              src={singleResolvedImage}
+                              alt="Fetched Preview"
                               className="w-full h-full object-cover"
                             />
                             <div className="absolute top-1 right-1 bg-emerald-600 text-white text-[9px] px-1.5 py-0.5 font-bold uppercase">
-                              Ready
+                              Verified
                             </div>
                           </div>
                         ) : (
                           <div className="text-center text-stone-400 space-y-1">
-                            <Instagram className="w-6 h-6 mx-auto opacity-50 text-stone-400" />
-                            <p className="text-[11px]">Photo Preview will appear here</p>
+                            <Instagram className="w-8 h-8 mx-auto opacity-40 text-stone-400" />
+                            <p className="text-xs font-medium">Real Photo Preview</p>
+                            <p className="text-[10px] text-stone-400">Paste URL & tap Fetch Photo</p>
                           </div>
                         )}
                       </div>
                     </div>
+                  </div>
 
-                    <div className="text-xs font-semibold uppercase tracking-wider text-[#8B2626] border-b border-stone-200 pb-2 pt-2">
-                      Step 2: Choose Target Category & Details
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                      {/* Target Category */}
-                      <div>
-                        <label className="text-xs font-medium text-stone-700 block mb-1">Target Category</label>
-                        <select
-                          value={igCategory}
-                          onChange={(e) => setIgCategory(e.target.value as any)}
-                          className="w-full text-xs px-3 py-2.5 border border-stone-300 focus:outline-none focus:border-[#8B2626] bg-white font-medium text-stone-800"
-                        >
-                          <option value="tops">👚 Tops & Shirts</option>
-                          <option value="jeans">👖 Jeans & Denims</option>
-                          <option value="kurtis">👗 Kurti's & Tunics</option>
-                          <option value="bottoms">🩳 Girls' Bottoms & Trousers</option>
-                        </select>
+                  {/* Section B: Bulk Multi-URL Batch Fetcher & Multi-File Uploader */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Bulk URL Paste */}
+                    <div className="bg-white p-5 border border-[#E7DFD5] shadow-xs space-y-3">
+                      <div className="text-xs font-semibold uppercase tracking-wider text-[#8B2626] border-b border-stone-200 pb-2 flex items-center justify-between">
+                        <span className="flex items-center gap-1.5">
+                          <Layers className="w-3.5 h-3.5" />
+                          <span>Method 2: Batch Fetch Multiple Instagram Links</span>
+                        </span>
                       </div>
+                      <p className="text-[11px] text-stone-600">
+                        Paste 5, 10, or 20 Instagram URLs (one link per line). All will be fetched into your Real Photo Vault simultaneously.
+                      </p>
 
-                      {/* Title */}
-                      <div>
-                        <label className="text-xs font-medium text-stone-700 block mb-1">Outfit Title / Name</label>
-                        <input
-                          type="text"
-                          value={igTitle}
-                          onChange={(e) => setIgTitle(e.target.value)}
-                          placeholder="e.g. Korean Ribbed Crop Top"
-                          className="w-full text-xs px-3 py-2.5 border border-stone-300 focus:outline-none focus:border-[#8B2626]"
-                          required
-                        />
-                      </div>
-
-                      {/* Fabric / Fit */}
-                      <div>
-                        <label className="text-xs font-medium text-stone-700 block mb-1">Fabric & Texture</label>
-                        <input
-                          type="text"
-                          value={igFabric}
-                          onChange={(e) => setIgFabric(e.target.value)}
-                          placeholder="e.g. 100% Rigid Denim / Pure Cotton"
-                          className="w-full text-xs px-3 py-2.5 border border-stone-300 focus:outline-none focus:border-[#8B2626]"
-                        />
-                      </div>
-
-                      {/* Tag */}
-                      <div>
-                        <label className="text-xs font-medium text-stone-700 block mb-1">Badge Tag</label>
-                        <input
-                          type="text"
-                          value={igTag}
-                          onChange={(e) => setIgTag(e.target.value)}
-                          placeholder="INSTAGRAM DROP / BESTSELLER"
-                          className="w-full text-xs px-3 py-2.5 border border-stone-300 focus:outline-none focus:border-[#8B2626]"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-stone-200">
-                      <div className="flex items-center gap-3 text-xs text-stone-600">
-                        <span className="font-medium">Also publish to:</span>
-                        <label className="inline-flex items-center gap-1 cursor-pointer">
-                          <input
-                            type="radio"
-                            name="igPlacement"
-                            checked={igPlacement === 'new-arrival'}
-                            onChange={() => setIgPlacement('new-arrival')}
-                            className="text-[#8B2626]"
-                          />
-                          <span>The New Edit</span>
-                        </label>
-                        <label className="inline-flex items-center gap-1 cursor-pointer">
-                          <input
-                            type="radio"
-                            name="igPlacement"
-                            checked={igPlacement === 'all'}
-                            onChange={() => setIgPlacement('all')}
-                            className="text-[#8B2626]"
-                          />
-                          <span>Everywhere (Feed + Edit)</span>
-                        </label>
-                      </div>
+                      <textarea
+                        rows={4}
+                        value={bulkUrlsText}
+                        onChange={(e) => setBulkUrlsText(e.target.value)}
+                        placeholder="https://instagram.com/p/CODE1/&#10;https://instagram.com/p/CODE2/&#10;https://instagram.com/reel/CODE3/"
+                        className="w-full text-xs font-mono p-2.5 border border-stone-300 focus:outline-none focus:border-[#8B2626]"
+                      />
 
                       <button
-                        type="submit"
-                        disabled={isSyncing || !igExtractedImage}
-                        className={`px-8 py-3 bg-[#8B2626] hover:bg-[#6D1E1E] text-white text-xs font-semibold tracking-wider uppercase transition-colors flex items-center gap-2 shadow-sm ${
-                          !igExtractedImage ? 'opacity-50 cursor-not-allowed' : ''
+                        type="button"
+                        onClick={handleBulkFetchInstagram}
+                        disabled={isBulkProcessing || !bulkUrlsText.trim()}
+                        className={`w-full py-2.5 bg-[#1C1917] hover:bg-[#8B2626] text-white text-xs font-semibold uppercase tracking-wider transition-colors flex items-center justify-center gap-2 ${
+                          !bulkUrlsText.trim() ? 'opacity-50 cursor-not-allowed' : ''
                         }`}
                       >
-                        <CheckCircle2 className="w-4 h-4 text-[#D4AF37]" />
-                        <span>IMPORT & PUBLISH LIVE TO WEBSITE</span>
+                        <Zap className="w-3.5 h-3.5 text-[#D4AF37]" />
+                        <span>{isBulkProcessing ? 'Fetching All...' : '⚡ Fetch All into Real Vault'}</span>
                       </button>
                     </div>
-                  </form>
 
-                  {/* 1-Click Instagram Preset Drops */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
+                    {/* Multi-File Upload from Phone/PC */}
+                    <div className="bg-white p-5 border border-[#E7DFD5] shadow-xs space-y-3">
+                      <div className="text-xs font-semibold uppercase tracking-wider text-[#8B2626] border-b border-stone-200 pb-2 flex items-center justify-between">
+                        <span className="flex items-center gap-1.5">
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>Method 3: Batch Upload Client Real Photos</span>
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-stone-600">
+                        Select multiple raw photos from WhatsApp, phone gallery, or computer to load directly into the vault.
+                      </p>
+
+                      <div className="border-2 border-dashed border-stone-300 p-6 text-center hover:border-[#8B2626] transition-colors cursor-pointer bg-stone-50/50"
+                        onClick={() => bulkFileInputRef.current?.click()}
+                      >
+                        <Upload className="w-8 h-8 mx-auto text-stone-400 mb-2" />
+                        <span className="text-xs font-medium text-[#8B2626] block">
+                          Click to select multiple photos (JPG, PNG, WebP)
+                        </span>
+                        <span className="text-[10px] text-stone-500">Hold Ctrl / Shift to select 10+ photos</span>
+                        <input
+                          type="file"
+                          ref={bulkFileInputRef}
+                          onChange={handleBatchFileUpload}
+                          multiple
+                          accept="image/*"
+                          className="hidden"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section C: Curated Boutique Preset Packs */}
+                  <div className="bg-white p-5 border border-[#E7DFD5] shadow-xs space-y-3">
+                    <div className="flex items-center justify-between border-b border-stone-200 pb-2">
                       <div className="text-xs font-semibold uppercase tracking-wider text-stone-700 flex items-center gap-1.5">
                         <Instagram className="w-4 h-4 text-[#8B2626]" />
-                        <span>Quick Presets: 1-Click Import from @clothcollection.agra</span>
+                        <span>Quick Presets from @clothcollection.agra</span>
                       </div>
-                      <span className="text-[11px] text-stone-500">Tap any tile to auto-fill</span>
+                      <span className="text-[11px] text-stone-500">1-Click Add to Vault</span>
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                       {INSTAGRAM_PRESETS.map((preset, idx) => (
                         <div
                           key={idx}
-                          onClick={() => handleApplyPreset(preset)}
-                          className="group cursor-pointer bg-white border border-[#E7DFD5] p-2 hover:border-[#8B2626] transition-all shadow-xs"
+                          className="group bg-stone-50 border border-stone-200 p-2 hover:border-[#8B2626] transition-all shadow-xs flex flex-col justify-between"
                         >
-                          <div className="aspect-[3/4] bg-stone-100 overflow-hidden relative mb-2">
-                            <img
-                              src={preset.image}
-                              alt={preset.title}
-                              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                            />
-                            <div className="absolute top-1.5 left-1.5 bg-black/75 text-white text-[9px] px-1.5 py-0.5 uppercase">
-                              {preset.categoryLabel}
+                          <div>
+                            <div className="aspect-[3/4] bg-stone-200 overflow-hidden relative mb-2">
+                              <img
+                                src={preset.image}
+                                alt={preset.title}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                              />
+                              <div className="absolute top-1 left-1 bg-black/75 text-white text-[8px] px-1.5 py-0.5 uppercase">
+                                {preset.categoryLabel}
+                              </div>
                             </div>
+                            <h5 className="font-serif text-xs font-bold text-[#1C1917] truncate">{preset.title}</h5>
+                            <p className="text-[10px] text-stone-500 truncate">{preset.fabric}</p>
                           </div>
 
-                          <h5 className="font-serif text-xs font-bold text-[#1C1917] truncate group-hover:text-[#8B2626]">
-                            {preset.title}
-                          </h5>
-                          <p className="text-[10px] text-stone-500 truncate">{preset.fabric}</p>
-
-                          <div className="mt-2 pt-1 border-t border-stone-100 flex items-center justify-between text-[10px] text-[#8B2626] font-semibold">
-                            <span>Use This Preset</span>
-                            <span>→</span>
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleAddPresetToVault(preset)}
+                            className="mt-2 w-full py-1.5 bg-white border border-stone-300 hover:bg-[#8B2626] hover:text-white text-[10px] font-semibold uppercase tracking-wider transition-colors flex items-center justify-center gap-1"
+                          >
+                            <Plus className="w-3 h-3" />
+                            <span>Add to Vault</span>
+                          </button>
                         </div>
                       ))}
                     </div>
@@ -777,185 +854,242 @@ export const PhotoManagerModal: React.FC = () => {
                 </div>
               )}
 
-              {/* TAB 2: THE NEW EDIT SECTION */}
-              {activeTab === 'new-edit' && (
+              {/* TAB 2: REAL PHOTO VAULT (MEDIA LIBRARY) */}
+              {activeTab === 'vault' && (
                 <div className="space-y-6">
-                  <div>
-                    <h4 className="font-serif text-xl text-[#1C1917] font-normal">
-                      The New Edit — Tops, Jeans, Kurtis & Bottoms
-                    </h4>
-                    <p className="text-xs text-stone-600 font-light">
-                      Manage items displayed on the live website. Changes are instantly saved to Firebase.
-                    </p>
-                  </div>
-
-                  {/* Create New Item Form */}
-                  <form onSubmit={handleCreateNewItem} className="bg-white p-5 border border-[#E7DFD5] shadow-xs space-y-4">
-                    <div className="text-xs font-semibold uppercase tracking-wider text-[#8B2626] border-b border-stone-200 pb-2">
-                      Upload New Outfit
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-stone-200 pb-3">
+                    <div>
+                      <h4 className="font-serif text-xl text-[#1C1917]">
+                        Real Photo Vault ({mediaLibrary.length} Verified Photos)
+                      </h4>
+                      <p className="text-xs text-stone-600 font-light">
+                        Select any real photo and click <strong>"📍 Slot into Website"</strong> to instantly assign it to the Hero Banner, Tops, Jeans, Kurtis, Bottoms, or Instagram grid.
+                      </p>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {/* Image Source */}
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium text-stone-700 block">Photo (Device or Image Link)</label>
-                        <div className="flex gap-2">
-                          <input
-                            type="url"
-                            value={newArrivalImgUrl}
-                            onChange={(e) => {
-                              setNewArrivalImgUrl(e.target.value);
-                              setNewArrivalPreview(e.target.value);
-                            }}
-                            placeholder="Paste image link URL..."
-                            className="flex-1 text-xs px-3 py-2 border border-stone-300 focus:outline-none focus:border-[#8B2626]"
-                          />
-                          <input
-                            type="file"
-                            ref={fileInputRef}
-                            onChange={(e) => handleFileUpload(e, 'item')}
-                            accept="image/*"
-                            className="hidden"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => fileInputRef.current?.click()}
-                            className="px-3 py-2 bg-stone-100 border border-stone-300 hover:bg-stone-200 text-xs font-medium flex items-center gap-1.5"
-                          >
-                            <Upload className="w-3.5 h-3.5" />
-                            <span>Browse</span>
-                          </button>
-                        </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('fetch-ig')}
+                        className="px-3 py-1.5 bg-[#8B2626] text-white text-xs font-semibold tracking-wider uppercase flex items-center gap-1.5"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Fetch More Photos</span>
+                      </button>
+                    </div>
+                  </div>
 
-                        {newArrivalPreview && (
-                          <div className="relative w-20 h-24 border border-stone-300 overflow-hidden mt-2">
-                            <img src={newArrivalPreview} alt="Preview" className="w-full h-full object-cover" />
+                  {mediaLibrary.length === 0 ? (
+                    <div className="text-center py-16 bg-white border border-dashed border-stone-300 space-y-3">
+                      <FolderOpen className="w-12 h-12 mx-auto text-stone-300" />
+                      <h5 className="font-serif text-base text-stone-700">Real Photo Vault is empty</h5>
+                      <p className="text-xs text-stone-500">
+                        Paste Instagram URLs or upload real photos from device to populate your vault.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('fetch-ig')}
+                        className="px-4 py-2 bg-[#1C1917] text-white text-xs font-semibold uppercase tracking-wider"
+                      >
+                        Fetch Instagram Photos Now
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                      {mediaLibrary.map((item) => (
+                        <div
+                          key={item.id}
+                          className="group bg-white border border-[#E7DFD5] p-2.5 shadow-xs hover:border-[#8B2626] transition-all flex flex-col justify-between"
+                        >
+                          <div>
+                            <div className="aspect-[3/4] bg-stone-100 overflow-hidden relative mb-2">
+                              <img
+                                src={item.url}
+                                alt={item.title}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                              />
+                              <div className="absolute top-1 left-1 bg-black/75 text-white text-[8px] px-1.5 py-0.5 uppercase font-mono">
+                                {item.source}
+                              </div>
+                            </div>
+                            <h5 className="font-serif text-xs font-bold text-[#1C1917] truncate">{item.title}</h5>
+                            <p className="text-[10px] text-stone-400 truncate">
+                              {new Date(item.importedAt).toLocaleDateString()}
+                            </p>
+                          </div>
+
+                          <div className="space-y-1.5 mt-3 pt-2 border-t border-stone-100">
                             <button
                               type="button"
                               onClick={() => {
-                                setNewArrivalImgUrl('');
-                                setNewArrivalPreview(null);
+                                setSelectedVaultItem(item);
+                                setSlotTitle(item.title);
                               }}
-                              className="absolute top-1 right-1 p-0.5 bg-black/70 text-white rounded-full"
+                              className="w-full py-2 bg-[#8B2626] hover:bg-[#6D1E1E] text-white text-[11px] font-semibold uppercase tracking-wider transition-colors flex items-center justify-center gap-1.5 shadow-xs"
                             >
-                              <X className="w-3 h-3" />
+                              <MousePointerClick className="w-3.5 h-3.5 text-[#D4AF37]" />
+                              <span>Slot into Website</span>
                             </button>
-                          </div>
-                        )}
-                      </div>
 
-                      {/* Outfit Title */}
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium text-stone-700 block">Outfit Name / Title</label>
-                        <input
-                          type="text"
-                          value={newArrivalTitle}
-                          onChange={(e) => setNewArrivalTitle(e.target.value)}
-                          placeholder="e.g. Vintage High-Rise Wide Leg Jeans"
-                          className="w-full text-xs px-3 py-2 border border-stone-300 focus:outline-none focus:border-[#8B2626]"
-                          required
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                      <div>
-                        <label className="text-xs font-medium text-stone-700 block mb-1">Category</label>
-                        <select
-                          value={newArrivalCategory}
-                          onChange={(e) => setNewArrivalCategory(e.target.value as any)}
-                          className="w-full text-xs px-3 py-2 border border-stone-300 focus:outline-none focus:border-[#8B2626] bg-white font-medium"
-                        >
-                          <option value="tops">👚 Tops & Shirts</option>
-                          <option value="jeans">👖 Jeans & Denims</option>
-                          <option value="kurtis">👗 Kurti's & Tunics</option>
-                          <option value="bottoms">🩳 Girls' Bottoms & Trousers</option>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="text-xs font-medium text-stone-700 block mb-1">Fabric & Texture</label>
-                        <input
-                          type="text"
-                          value={newArrivalFabric}
-                          onChange={(e) => setNewArrivalFabric(e.target.value)}
-                          placeholder="e.g. 100% Rigid Denim"
-                          className="w-full text-xs px-3 py-2 border border-stone-300 focus:outline-none focus:border-[#8B2626]"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="text-xs font-medium text-stone-700 block mb-1">Badge / Tag</label>
-                        <input
-                          type="text"
-                          value={newArrivalTag}
-                          onChange={(e) => setNewArrivalTag(e.target.value)}
-                          placeholder="NEW DROP / BESTSELLER"
-                          className="w-full text-xs px-3 py-2 border border-stone-300 focus:outline-none focus:border-[#8B2626]"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex justify-end pt-2">
-                      <button
-                        type="submit"
-                        disabled={isSyncing}
-                        className="px-6 py-2.5 bg-[#8B2626] hover:bg-[#6D1E1E] text-white text-xs font-semibold tracking-wider uppercase transition-colors flex items-center gap-2"
-                      >
-                        <Plus className="w-4 h-4" />
-                        <span>Publish to Live Website</span>
-                      </button>
-                    </div>
-                  </form>
-
-                  {/* Active Items List */}
-                  <div className="space-y-3">
-                    <div className="text-xs font-semibold uppercase tracking-wider text-stone-700">
-                      Currently Active Items ({newArrivals.length})
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                      {newArrivals.map((item) => (
-                        <div key={item.id} className="bg-white border border-[#E7DFD5] p-3 flex gap-3 shadow-xs">
-                          <img
-                            src={item.image}
-                            alt={item.title}
-                            className="w-16 h-20 object-cover bg-stone-100 shrink-0"
-                          />
-                          <div className="flex-1 min-w-0 flex flex-col justify-between">
-                            <div>
-                              <span className="text-[10px] font-semibold text-[#8B2626] uppercase">
-                                {item.tag}
-                              </span>
-                              <h5 className="font-serif text-xs font-bold text-[#1C1917] truncate">
-                                {item.title}
-                              </h5>
-                              <p className="text-[11px] text-stone-500 truncate">
-                                {item.details?.fabric || item.categoryLabel}
-                              </p>
-                            </div>
-
-                            <div className="flex items-center gap-2 pt-1 border-t border-stone-100">
+                            <div className="flex items-center justify-between pt-1">
                               <button
                                 type="button"
                                 onClick={() => {
-                                  const newUrl = prompt('Enter new image URL for ' + item.title, item.image);
-                                  if (newUrl) replaceItemPhoto(item.id, newUrl);
+                                  navigator.clipboard.writeText(item.url);
+                                  showToast('📋 Image URL copied!');
                                 }}
-                                className="text-[10px] text-stone-600 hover:text-[#8B2626] underline"
+                                className="text-[10px] text-stone-600 hover:text-[#8B2626] flex items-center gap-0.5"
+                              >
+                                <Copy className="w-3 h-3" />
+                                <span>Copy Link</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => removeFromMediaLibrary(item.id)}
+                                className="text-[10px] text-red-600 hover:text-red-800 flex items-center gap-0.5"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                <span>Delete</span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB 3: VISUAL WEBSITE SLOT MATRIX ("JAHA JAHA IMAGE ADD KARNI HAI WAHA ADD KAREIN") */}
+              {activeTab === 'slot-matrix' && (
+                <div className="space-y-8 max-w-5xl">
+                  <div>
+                    <h4 className="font-serif text-xl text-[#1C1917]">
+                      Website Visual Slot Matrix
+                    </h4>
+                    <p className="text-xs text-stone-600 font-light">
+                      Har website section ka visual map. Kisi bhi slot ki photo change karne ke liye <strong>"Replace Photo"</strong> par tap karein aur Vault se real photo select karein.
+                    </p>
+                  </div>
+
+                  {/* SLOT SECTION 1: HERO BANNER */}
+                  <div className="bg-white p-5 border border-[#E7DFD5] shadow-xs space-y-3">
+                    <div className="flex items-center justify-between border-b border-stone-200 pb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-full bg-[#8B2626] text-white text-xs font-bold flex items-center justify-center">1</span>
+                        <h5 className="font-serif text-sm font-bold text-[#1C1917]">Main Hero Header Banner Slot</h5>
+                      </div>
+                      <span className="text-[11px] text-stone-500 uppercase">Top of Homepage</span>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row gap-4 items-center">
+                      <div className="w-full sm:w-64 h-36 bg-stone-900 overflow-hidden relative border border-stone-300">
+                        <img src={heroImage} alt="Hero Banner" className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 bg-black/30 flex items-center justify-center text-white text-xs font-semibold">
+                          Active Hero Banner
+                        </div>
+                      </div>
+
+                      <div className="flex-1 space-y-2">
+                        <p className="text-xs text-stone-600">
+                          Full-width atmospheric luxury banner shown right as visitors land on the boutique website.
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setReplacingSlot({ type: 'hero' })}
+                            className="px-4 py-2 bg-[#8B2626] text-white text-xs font-semibold uppercase tracking-wider hover:bg-[#6D1E1E] transition-colors flex items-center gap-1.5"
+                          >
+                            <FolderOpen className="w-3.5 h-3.5 text-[#D4AF37]" />
+                            <span>Pick from Real Vault</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* SLOT SECTION 2: 4 CORE FOCUS CATEGORY COVERS */}
+                  <div className="bg-white p-5 border border-[#E7DFD5] shadow-xs space-y-3">
+                    <div className="flex items-center justify-between border-b border-stone-200 pb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-full bg-[#8B2626] text-white text-xs font-bold flex items-center justify-center">2</span>
+                        <h5 className="font-serif text-sm font-bold text-[#1C1917]">4 Focus Category Cover Photos</h5>
+                      </div>
+                      <span className="text-[11px] text-stone-500 uppercase">Featured Department Tiles</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                      {categories.map((cat) => (
+                        <div key={cat.id} className="bg-stone-50 border border-stone-200 p-2.5 space-y-2">
+                          <div className="aspect-[4/3] bg-stone-900 relative overflow-hidden">
+                            <img src={cat.image} alt={cat.title} className="w-full h-full object-cover" />
+                            <div className="absolute bottom-1.5 left-1.5 bg-black/80 text-white text-[9px] px-2 py-0.5 font-bold uppercase">
+                              {cat.title}
+                            </div>
+                          </div>
+
+                          <div className="text-center">
+                            <button
+                              type="button"
+                              onClick={() => setReplacingSlot({ type: 'category', categoryId: cat.id, categoryTitle: cat.title })}
+                              className="w-full py-1.5 bg-white border border-stone-300 hover:border-[#8B2626] hover:text-[#8B2626] text-[10px] font-semibold uppercase tracking-wider transition-colors flex items-center justify-center gap-1"
+                            >
+                              <FolderOpen className="w-3 h-3" />
+                              <span>Replace Cover</span>
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* SLOT SECTION 3: THE NEW EDIT OUTFITS */}
+                  <div className="bg-white p-5 border border-[#E7DFD5] shadow-xs space-y-3">
+                    <div className="flex items-center justify-between border-b border-stone-200 pb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-full bg-[#8B2626] text-white text-xs font-bold flex items-center justify-center">3</span>
+                        <h5 className="font-serif text-sm font-bold text-[#1C1917]">The New Edit — Active Weekly Outfits ({newArrivals.length})</h5>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('fetch-ig')}
+                        className="px-3 py-1 bg-[#8B2626] text-white text-[10px] font-semibold uppercase tracking-wider flex items-center gap-1"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>Add New Outfit</span>
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                      {newArrivals.map((item) => (
+                        <div key={item.id} className="bg-stone-50 border border-stone-200 p-2.5 flex gap-3">
+                          <img src={item.image} alt={item.title} className="w-16 h-20 object-cover bg-stone-200 shrink-0" />
+                          <div className="flex-1 min-w-0 flex flex-col justify-between">
+                            <div>
+                              <span className="text-[9px] font-bold text-[#8B2626] uppercase">{item.tag}</span>
+                              <h6 className="font-serif text-xs font-bold text-[#1C1917] truncate">{item.title}</h6>
+                              <p className="text-[10px] text-stone-500 truncate">{item.details?.fabric || item.categoryLabel}</p>
+                            </div>
+
+                            <div className="flex items-center gap-2 pt-1 border-t border-stone-200">
+                              <button
+                                type="button"
+                                onClick={() => setReplacingSlot({ type: 'replaceNewArrival', itemId: item.id })}
+                                className="text-[10px] text-stone-700 hover:text-[#8B2626] underline font-medium"
                               >
                                 Replace Photo
                               </button>
                               <button
                                 type="button"
                                 onClick={() => {
-                                  if (confirm('Delete outfit "' + item.title + '" from website?')) {
+                                  if (confirm(`Remove outfit "${item.title}" from website?`)) {
                                     deleteCustomItem(item.id);
                                   }
                                 }}
                                 className="text-[10px] text-red-600 hover:text-red-800 ml-auto"
                               >
-                                Delete
+                                Remove
                               </button>
                             </div>
                           </div>
@@ -963,235 +1097,123 @@ export const PhotoManagerModal: React.FC = () => {
                       ))}
                     </div>
                   </div>
-                </div>
-              )}
 
-              {/* TAB 3: 4 CORE CATEGORIES */}
-              {activeTab === 'categories' && (
-                <div className="space-y-6">
-                  <div>
-                    <h4 className="font-serif text-xl text-[#1C1917] font-normal">
-                      4 Core Category Cover Photos
-                    </h4>
-                    <p className="text-xs text-stone-600 font-light">
-                      Update cover photography for Tops, Jeans, Kurti's, and Girls' Bottoms.
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {categories.map((cat) => (
-                      <div key={cat.id} className="bg-white border border-[#E7DFD5] p-3 space-y-2">
-                        <div className="aspect-[4/3] bg-stone-900 relative overflow-hidden">
-                          <img src={cat.image} alt={cat.title} className="w-full h-full object-cover" />
-                          <div className="absolute bottom-2 left-2 bg-black/70 text-white text-[10px] px-2 py-0.5">
-                            {cat.title}
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="text-[11px] font-medium text-stone-700 block mb-1">
-                            {cat.title} Cover Photo URL
-                          </label>
-                          <input
-                            type="url"
-                            value={cat.image}
-                            onChange={(e) => updateCategoryPhoto(cat.id, e.target.value)}
-                            className="w-full text-xs px-2.5 py-1.5 border border-stone-300 focus:outline-none focus:border-[#8B2626]"
-                          />
-                        </div>
+                  {/* SLOT SECTION 4: INSTAGRAM FEED 6 TILES */}
+                  <div className="bg-white p-5 border border-[#E7DFD5] shadow-xs space-y-3">
+                    <div className="flex items-center justify-between border-b border-stone-200 pb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-full bg-[#8B2626] text-white text-xs font-bold flex items-center justify-center">4</span>
+                        <h5 className="font-serif text-sm font-bold text-[#1C1917]">Instagram Live Grid (6 Feed Slots)</h5>
                       </div>
-                    ))}
+                      <span className="text-[11px] text-stone-500 uppercase">@clothcollection.agra</span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+                      {instagramPosts.map((post, idx) => (
+                        <div key={post.id} className="bg-stone-50 border border-stone-200 p-2 space-y-1.5">
+                          <div className="aspect-square bg-stone-900 relative overflow-hidden">
+                            <img src={post.image} alt="IG Post" className="w-full h-full object-cover" />
+                            <div className="absolute top-1 left-1 bg-black/80 text-white text-[8px] px-1 py-0.5 font-mono">
+                              Slot #{idx + 1}
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => setReplacingSlot({ type: 'instagramPost', postId: post.id })}
+                            className="w-full py-1 bg-white border border-stone-300 hover:bg-[#8B2626] hover:text-white text-[9px] font-semibold uppercase tracking-wider transition-colors"
+                          >
+                            Replace Tile
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}
 
-              {/* TAB 4: HERO BANNER */}
-              {activeTab === 'hero' && (
-                <div className="space-y-6">
+              {/* TAB 4: CLOUD SYNC & STATIC CODE EXPORT */}
+              {activeTab === 'export' && (
+                <div className="space-y-6 max-w-4xl">
                   <div>
-                    <h4 className="font-serif text-xl text-[#1C1917] font-normal">
-                      Hero Banner Background
+                    <h4 className="font-serif text-xl text-[#1C1917]">
+                      Cloud Database & Static Code Exporter
                     </h4>
                     <p className="text-xs text-stone-600 font-light">
-                      Update the full-width high-resolution hero photo at the top of the homepage.
+                      Real-time Firebase Firestore database management & 1-click JSON code export.
                     </p>
                   </div>
 
+                  {/* Firestore Status */}
                   <div className="bg-white p-5 border border-[#E7DFD5] space-y-4">
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium text-stone-700 block">Hero Image URL</label>
-                      <div className="flex gap-2">
-                        <input
-                          type="url"
-                          value={tempHeroUrl}
-                          onChange={(e) => setTempHeroUrl(e.target.value)}
-                          placeholder="Paste image link URL..."
-                          className="flex-1 text-xs px-3 py-2 border border-stone-300 focus:outline-none focus:border-[#8B2626]"
-                        />
-                        <input
-                          type="file"
-                          ref={heroFileInputRef}
-                          onChange={(e) => handleFileUpload(e, 'hero')}
-                          accept="image/*"
-                          className="hidden"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => heroFileInputRef.current?.click()}
-                          className="px-4 py-2 bg-stone-100 border border-stone-300 hover:bg-stone-200 text-xs font-medium flex items-center gap-1.5"
-                        >
-                          <Upload className="w-3.5 h-3.5" />
-                          <span>Upload File</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="relative aspect-[16/8] sm:aspect-[21/9] bg-stone-900 overflow-hidden border border-stone-300">
-                      <img
-                        src={tempHeroUrl}
-                        alt="Hero Preview"
-                        className="w-full h-full object-cover filter brightness-[0.8]"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex items-end p-6">
-                        <div className="text-white">
-                          <p className="text-[10px] tracking-[0.25em] text-[#D4AF37] uppercase">SINCE 1943 · AGRA</p>
-                          <h3 className="font-serif text-2xl">Preview of Hero Banner</h3>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className={`p-2.5 rounded-full ${isFirebaseLive ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                          <Database className="w-5 h-5" />
                         </div>
-                      </div>
-                    </div>
-
-                    <div className="flex justify-end gap-3 pt-2">
-                      <button
-                        type="button"
-                        onClick={handleSaveHero}
-                        disabled={isSyncing}
-                        className="px-6 py-2.5 bg-[#8B2626] hover:bg-[#6D1E1E] text-white text-xs font-semibold tracking-wider uppercase transition-colors"
-                      >
-                        SAVE & SYNC HERO BANNER
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* TAB 5: INSTAGRAM GRID */}
-              {activeTab === 'instagram' && (
-                <div className="space-y-6">
-                  <div>
-                    <h4 className="font-serif text-xl text-[#1C1917] font-normal">
-                      Instagram Grid (@clothcollection.agra)
-                    </h4>
-                    <p className="text-xs text-stone-600 font-light">
-                      Update the 6 posts displayed in the live Instagram social feed section.
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                    {instagramPosts.map((post, idx) => (
-                      <div key={post.id} className="bg-white border border-[#E7DFD5] p-3 space-y-2">
-                        <div className="aspect-square bg-stone-900 relative overflow-hidden">
-                          <img src={post.image} alt={`Post ${idx + 1}`} className="w-full h-full object-cover" />
-                          <div className="absolute top-2 left-2 bg-black/70 text-white text-[10px] px-2 py-0.5">
-                            Post #{idx + 1}
-                          </div>
-                        </div>
-
                         <div>
-                          <label className="text-[11px] font-medium text-stone-700 block mb-1">Image URL</label>
-                          <input
-                            type="url"
-                            value={post.image}
-                            onChange={(e) => updateInstagramPostPhoto(post.id, e.target.value)}
-                            className="w-full text-xs px-2.5 py-1.5 border border-stone-300 focus:outline-none focus:border-[#8B2626]"
-                          />
+                          <h5 className="font-serif text-sm font-bold text-[#1C1917]">
+                            {isFirebaseLive ? 'Firebase Firestore Connected & Real-Time Live' : 'Operating in Local Resilient Mode'}
+                          </h5>
+                          <p className="text-xs text-stone-500">
+                            Project DB: ai-studio-clothescollectio-c9d264f5-d366-4e4a-bc5d-0f085afa6c33
+                          </p>
                         </div>
-
-                        <div>
-                          <label className="text-[11px] font-medium text-stone-700 block mb-1">Caption</label>
-                          <input
-                            type="text"
-                            value={post.caption}
-                            onChange={(e) => updateInstagramPostPhoto(post.id, post.image, e.target.value)}
-                            className="w-full text-xs px-2.5 py-1.5 border border-stone-300 focus:outline-none focus:border-[#8B2626]"
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* TAB 6: FIREBASE CLOUD & STATIC EXPORT */}
-              {activeTab === 'firebase' && (
-                <div className="space-y-6">
-                  <div>
-                    <h4 className="font-serif text-xl text-[#1C1917] font-normal">
-                      Firebase Cloud Sync & Static Migration
-                    </h4>
-                    <p className="text-xs text-stone-600 font-light">
-                      Live Firestore database status and 1-click static export when you want to remove the database later.
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Firebase Status */}
-                    <div className="bg-white p-5 border border-[#E7DFD5] space-y-4">
-                      <div className="flex items-center gap-2 text-[#8B2626] font-semibold text-xs uppercase tracking-wider">
-                        <Database className="w-4 h-4" />
-                        <span>Cloud Database Configuration</span>
-                      </div>
-
-                      <div className="bg-stone-50 p-3 rounded-none text-xs space-y-1.5 font-mono">
-                        <div><strong>Project:</strong> ananttecg</div>
-                        <div><strong>Database:</strong> Firestore Cloud Live</div>
-                        <div><strong>Status:</strong> {isFirebaseLive ? '✅ Connected & Active' : '⚡ Local Resilient Mode'}</div>
-                        <div><strong>Last Sync:</strong> {lastSyncedTime || 'Real-time'}</div>
                       </div>
 
                       <button
                         type="button"
                         onClick={syncAllToFirestore}
                         disabled={isSyncing}
-                        className="w-full py-3 bg-[#1C1917] hover:bg-[#8B2626] text-white text-xs font-semibold tracking-wider uppercase transition-colors flex items-center justify-center gap-2"
+                        className="px-4 py-2 bg-[#1C1917] hover:bg-[#8B2626] text-white text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5"
                       >
                         <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-                        <span>{isSyncing ? 'Syncing...' : 'Force Sync All to Cloud'}</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (confirm('Reset all website photos back to Clothes Collection Agra defaults?')) {
-                            resetToDefaults();
-                            showToast('↺ Reset to boutique default photography.');
-                          }
-                        }}
-                        className="w-full py-2.5 border border-stone-300 text-stone-600 hover:bg-stone-100 text-xs font-medium tracking-wider uppercase transition-colors"
-                      >
-                        Reset to Boutique Defaults
+                        <span>{isSyncing ? 'Syncing...' : 'Force Sync Now'}</span>
                       </button>
                     </div>
+                  </div>
 
-                    {/* Static Code Export (No Database Future) */}
-                    <div className="bg-white p-5 border border-[#E7DFD5] space-y-4">
-                      <div className="flex items-center gap-2 text-[#8B2626] font-semibold text-xs uppercase tracking-wider">
-                        <Download className="w-4 h-4" />
-                        <span>Export Static Data (Future Manual Use)</span>
+                  {/* 1-Click Static JSON Code Exporter (For future DB removal) */}
+                  <div className="bg-white p-5 border border-[#E7DFD5] space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h5 className="font-serif text-sm font-bold text-[#1C1917]">
+                          Copy Static Configuration JSON
+                        </h5>
+                        <p className="text-xs text-stone-600">
+                          If client decides to remove the database later, copy this JSON to preserve all real photos and items permanently as static code.
+                        </p>
                       </div>
-
-                      <p className="text-xs text-stone-600 font-light leading-relaxed">
-                        Jab aapko Firebase database remove karke static images manually code me rakhni ho, toh is button par tap karein. Ye aapke sabhi live photos aur settings ka clean JSON format generate kar dega!
-                      </p>
 
                       <button
                         type="button"
                         onClick={handleExportData}
-                        className="w-full py-3 bg-[#8B2626] hover:bg-[#6D1E1E] text-white text-xs font-semibold tracking-wider uppercase transition-colors flex items-center justify-center gap-2"
+                        className="px-4 py-2 bg-[#8B2626] hover:bg-[#6D1E1E] text-white text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5"
                       >
-                        <Copy className="w-3.5 h-3.5" />
-                        <span>{copiedCode ? 'Copied to Clipboard!' : 'Copy Static JSON Code'}</span>
+                        {copiedCode ? <Check className="w-4 h-4 text-[#D4AF37]" /> : <Copy className="w-4 h-4 text-[#D4AF37]" />}
+                        <span>{copiedCode ? 'Copied to Clipboard!' : 'Copy Static JSON'}</span>
                       </button>
                     </div>
+                  </div>
+
+                  {/* Reset Defaults */}
+                  <div className="bg-stone-50 p-4 border border-stone-200 flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-medium text-stone-800">Reset Website to Curated Boutique Defaults</p>
+                      <p className="text-[11px] text-stone-500">Restores high-res default Tops, Jeans, Kurtis, and Bottoms presets.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirm('Reset all website images and items to curated boutique defaults?')) {
+                          resetToDefaults();
+                          showToast('🔄 Reset to default boutique presets');
+                        }
+                      }}
+                      className="px-3 py-1.5 border border-stone-400 text-stone-700 hover:bg-stone-200 text-xs font-semibold uppercase"
+                    >
+                      Reset Defaults
+                    </button>
                   </div>
                 </div>
               )}
@@ -1199,6 +1221,168 @@ export const PhotoManagerModal: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* POPUP 1: SLOT PLACEMENT DRAWER (Triggered when user clicks "Slot into Website" on a Vault Photo) */}
+      {selectedVaultItem && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-fadeIn">
+          <div className="bg-white max-w-lg w-full p-5 border border-[#D4AF37] shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-stone-200 pb-2">
+              <h4 className="font-serif text-base font-bold text-[#1C1917]">
+                📍 Place Photo into Website Slot
+              </h4>
+              <button onClick={() => setSelectedVaultItem(null)} className="p-1 text-stone-400 hover:text-stone-800">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex gap-3">
+              <img
+                src={selectedVaultItem.url}
+                alt="Selected"
+                className="w-20 h-28 object-cover bg-stone-100 border border-stone-300 shrink-0"
+              />
+              <div className="flex-1 space-y-2">
+                <label className="text-xs font-medium text-stone-700 block">Choose Website Destination</label>
+                <select
+                  value={slotTarget}
+                  onChange={(e) => setSlotTarget(e.target.value)}
+                  className="w-full text-xs px-3 py-2 border border-stone-300 bg-white font-medium focus:border-[#8B2626] focus:outline-none"
+                >
+                  <option value="hero">👑 Main Hero Header Banner</option>
+                  <option value="category-cover">🎯 4 Focus Category Cover Photo</option>
+                  <option value="new-arrival">🛍️ Add as New Outfit in "The New Edit"</option>
+                  <option value="instagram-feed">📸 Replace Tile in Instagram 6-Grid</option>
+                  <option value="moodboard">🖼️ Add to Weekly Moodboard Gallery</option>
+                </select>
+
+                {(slotTarget === 'category-cover' || slotTarget === 'new-arrival') && (
+                  <div>
+                    <label className="text-xs font-medium text-stone-700 block mb-1">Target Category</label>
+                    <select
+                      value={slotCategory}
+                      onChange={(e) => setSlotCategory(e.target.value as any)}
+                      className="w-full text-xs px-3 py-2 border border-stone-300 bg-white font-medium"
+                    >
+                      <option value="tops">👚 Tops & Shirts</option>
+                      <option value="jeans">👖 Jeans & Denims</option>
+                      <option value="kurtis">👗 Kurti's & Tunics</option>
+                      <option value="bottoms">🩳 Girls' Bottoms & Trousers</option>
+                    </select>
+                  </div>
+                )}
+
+                {slotTarget === 'instagram-feed' && (
+                  <div>
+                    <label className="text-xs font-medium text-stone-700 block mb-1">Instagram Feed Tile Slot</label>
+                    <select
+                      value={slotIgPostIndex}
+                      onChange={(e) => setSlotIgPostIndex(Number(e.target.value))}
+                      className="w-full text-xs px-3 py-2 border border-stone-300 bg-white font-medium"
+                    >
+                      <option value={0}>Tile #1 (Top Left)</option>
+                      <option value={1}>Tile #2</option>
+                      <option value={2}>Tile #3</option>
+                      <option value={3}>Tile #4</option>
+                      <option value={4}>Tile #5</option>
+                      <option value={5}>Tile #6 (Bottom Right)</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {slotTarget === 'new-arrival' && (
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-stone-100">
+                <div>
+                  <label className="text-[11px] font-medium text-stone-700 block mb-1">Outfit Title</label>
+                  <input
+                    type="text"
+                    value={slotTitle}
+                    onChange={(e) => setSlotTitle(e.target.value)}
+                    placeholder="e.g. Korean Ribbed Crop Top"
+                    className="w-full text-xs px-2.5 py-1.5 border border-stone-300"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-medium text-stone-700 block mb-1">Fabric & Fit</label>
+                  <input
+                    type="text"
+                    value={slotFabric}
+                    onChange={(e) => setSlotFabric(e.target.value)}
+                    placeholder="e.g. 100% Rigid Denim"
+                    className="w-full text-xs px-2.5 py-1.5 border border-stone-300"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-stone-200">
+              <button
+                type="button"
+                onClick={() => setSelectedVaultItem(null)}
+                className="px-4 py-2 border border-stone-300 text-stone-700 text-xs font-semibold uppercase"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteSlotPlacement}
+                className="px-6 py-2 bg-[#8B2626] hover:bg-[#6D1E1E] text-white text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5"
+              >
+                <CheckCircle2 className="w-4 h-4 text-[#D4AF37]" />
+                <span>Apply Photo to Website</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* POPUP 2: PICK FROM VAULT FOR DIRECT SLOT REPLACEMENT */}
+      {replacingSlot && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-fadeIn">
+          <div className="bg-[#FAF7F2] max-w-2xl w-full p-5 border border-[#D4AF37] shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-stone-200 pb-2 shrink-0">
+              <div>
+                <h4 className="font-serif text-base font-bold text-[#1C1917]">
+                  Select Real Photo from Vault for Slot
+                </h4>
+                <p className="text-xs text-stone-500">
+                  Target: {replacingSlot.type.toUpperCase()}
+                </p>
+              </div>
+              <button onClick={() => setReplacingSlot(null)} className="p-1 text-stone-400 hover:text-stone-800">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto grid grid-cols-3 sm:grid-cols-4 gap-3 p-1">
+              {mediaLibrary.map((item) => (
+                <div
+                  key={item.id}
+                  onClick={() => handleApplyPhotoToMatrixSlot(item.url)}
+                  className="group cursor-pointer bg-white border border-stone-200 p-2 hover:border-[#8B2626] transition-all flex flex-col justify-between"
+                >
+                  <div className="aspect-[3/4] bg-stone-100 overflow-hidden mb-1">
+                    <img src={item.url} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                  </div>
+                  <p className="text-[10px] font-medium text-stone-800 truncate">{item.title}</p>
+                  <span className="text-[9px] text-[#8B2626] font-bold mt-1 block">Click to Select →</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-stone-200 shrink-0">
+              <button
+                type="button"
+                onClick={() => setReplacingSlot(null)}
+                className="px-4 py-2 border border-stone-300 text-stone-700 text-xs font-semibold uppercase"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -54,3 +54,21 @@ export interface InstagramPost {
   caption: string;
   tag: string;
 }
+
+export interface MediaLibraryItem {
+  id: string;
+  url: string;
+  source: 'instagram' | 'upload' | 'url' | 'preset';
+  title: string;
+  instagramUrl?: string;
+  importedAt: string;
+  aspectRatio?: 'tall' | 'square' | 'wide';
+}
+
+export type WebsiteSlot =
+  | { type: 'hero' }
+  | { type: 'category'; categoryId: string; categoryTitle?: string }
+  | { type: 'newArrival'; category: 'tops' | 'jeans' | 'kurtis' | 'bottoms'; title?: string; fabric?: string; tag?: string }
+  | { type: 'replaceNewArrival'; itemId: string }
+  | { type: 'instagramPost'; postId: string; caption?: string }
+  | { type: 'editorial'; itemId?: string };

@@ -134,6 +134,21 @@ function MainApp() {
       {/* Client Photo & Instagram Media Manager Modal */}
       <PhotoManagerModal />
 
+      {/* Floating Manager Studio Trigger Button for Store Owner */}
+      <div className="fixed bottom-20 sm:bottom-6 right-4 sm:right-6 z-30">
+        <button
+          onClick={() => setIsManagerOpen(true)}
+          id="btn-floating-photo-manager"
+          className="bg-[#121110] hover:bg-[#8B2626] text-white px-3.5 py-2.5 rounded-full shadow-2xl border border-[#D4AF37]/50 flex items-center gap-2 transition-all duration-300 group hover:scale-105"
+          title="Open Instagram Photo Importer & Slot Studio"
+        >
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="text-[11px] font-semibold tracking-wider uppercase pr-1">
+            Instagram Studio
+          </span>
+        </button>
+      </div>
+
       {/* Mobile Bottom Quick Actions (Call, WhatsApp, Directions) */}
       <StickyMobileBar />
     </div>

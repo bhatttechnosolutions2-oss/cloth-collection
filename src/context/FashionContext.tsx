@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { FashionItem, CollectionCategory, InstagramPost } from '../types';
+import { FashionItem, CollectionCategory, InstagramPost, MediaLibraryItem, WebsiteSlot } from '../types';
 import {
   NEW_ARRIVALS as DEFAULT_NEW_ARRIVALS,
   CATEGORIES as DEFAULT_CATEGORIES,
@@ -8,12 +8,81 @@ import {
 } from '../data/fashionData';
 import { db, doc, setDoc, onSnapshot } from '../lib/firebase';
 
+// Initial real boutique media library items
+const DEFAULT_MEDIA_LIBRARY: MediaLibraryItem[] = [
+  {
+    id: 'lib-1',
+    url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=1200&auto=format&fit=crop',
+    title: 'Korean Ribbed Puff Sleeve Crop Top',
+    source: 'preset',
+    instagramUrl: 'https://instagram.com/clothcollection.agra',
+    importedAt: '2026-08-24T10:00:00.000Z',
+  },
+  {
+    id: 'lib-2',
+    url: 'https://images.unsplash.com/photo-1541099649105-f69ad21f3246?q=80&w=1200&auto=format&fit=crop',
+    title: 'Vintage High-Rise Wide Leg Rigid Denim',
+    source: 'preset',
+    instagramUrl: 'https://instagram.com/clothcollection.agra',
+    importedAt: '2026-08-24T10:00:00.000Z',
+  },
+  {
+    id: 'lib-3',
+    url: 'https://images.unsplash.com/photo-1610030469983-98e550d6193c?q=80&w=1200&auto=format&fit=crop',
+    title: 'Chanderi Handblock Artisanal A-Line Kurti',
+    source: 'preset',
+    instagramUrl: 'https://instagram.com/clothcollection.agra',
+    importedAt: '2026-08-24T10:00:00.000Z',
+  },
+  {
+    id: 'lib-4',
+    url: 'https://images.unsplash.com/photo-1509631179647-0177331693ae?q=80&w=1200&auto=format&fit=crop',
+    title: 'Tailored Linen Pleated Straight Trousers',
+    source: 'preset',
+    instagramUrl: 'https://instagram.com/clothcollection.agra',
+    importedAt: '2026-08-24T10:00:00.000Z',
+  },
+  {
+    id: 'lib-5',
+    url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=1200&auto=format&fit=crop',
+    title: 'Floral Peplum Cotton Blouse',
+    source: 'preset',
+    instagramUrl: 'https://instagram.com/clothcollection.agra',
+    importedAt: '2026-08-24T10:00:00.000Z',
+  },
+  {
+    id: 'lib-6',
+    url: 'https://images.unsplash.com/photo-1582418702059-97ebafb35d09?q=80&w=1200&auto=format&fit=crop',
+    title: 'Retro Flare Bootcut Comfort Washed Jeans',
+    source: 'preset',
+    instagramUrl: 'https://instagram.com/clothcollection.agra',
+    importedAt: '2026-08-24T10:00:00.000Z',
+  },
+  {
+    id: 'lib-7',
+    url: 'https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?q=80&w=1200&auto=format&fit=crop',
+    title: 'Lavender Pastel Flared Anarkali Kurti',
+    source: 'preset',
+    instagramUrl: 'https://instagram.com/clothcollection.agra',
+    importedAt: '2026-08-24T10:00:00.000Z',
+  },
+  {
+    id: 'lib-8',
+    url: 'https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?q=80&w=1200&auto=format&fit=crop',
+    title: 'Wide Leg Modal Rayon Flowing Palazzo',
+    source: 'preset',
+    instagramUrl: 'https://instagram.com/clothcollection.agra',
+    importedAt: '2026-08-24T10:00:00.000Z',
+  },
+];
+
 interface FashionContextType {
   newArrivals: FashionItem[];
   categories: CollectionCategory[];
   editorialGallery: FashionItem[];
   instagramPosts: InstagramPost[];
   heroImage: string;
+  mediaLibrary: MediaLibraryItem[];
   isFirebaseLive: boolean;
   isSyncing: boolean;
   lastSyncedTime: string | null;
@@ -24,6 +93,9 @@ interface FashionContextType {
   updateInstagramPostPhoto: (postId: string, newImageUrl: string, newCaption?: string) => Promise<void>;
   replaceItemPhoto: (itemId: string, newImageUrl: string) => Promise<void>;
   deleteCustomItem: (itemId: string) => Promise<void>;
+  addToMediaLibrary: (items: Array<Omit<MediaLibraryItem, 'id' | 'importedAt'>>) => Promise<void>;
+  removeFromMediaLibrary: (id: string) => Promise<void>;
+  assignPhotoToSlot: (slot: WebsiteSlot, imageUrl: string, metadata?: any) => Promise<void>;
   syncAllToFirestore: () => Promise<void>;
   resetToDefaults: () => Promise<void>;
   isManagerOpen: boolean;
@@ -38,6 +110,7 @@ const STORAGE_KEY_CATEGORIES = 'clothes_collection_cats_v1';
 const STORAGE_KEY_EDITORIAL = 'clothes_collection_editorial_v1';
 const STORAGE_KEY_IG = 'clothes_collection_ig_v1';
 const STORAGE_KEY_HERO = 'clothes_collection_hero_v1';
+const STORAGE_KEY_LIBRARY = 'clothes_collection_library_v1';
 
 const FashionContext = createContext<FashionContextType | undefined>(undefined);
 
@@ -94,6 +167,18 @@ export const FashionProvider: React.FC<{ children: ReactNode }> = ({ children })
     return localStorage.getItem(STORAGE_KEY_HERO) || DEFAULT_HERO_IMAGE;
   });
 
+  const [mediaLibrary, setMediaLibrary] = useState<MediaLibraryItem[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_LIBRARY);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error('Failed to parse saved media library', e);
+      }
+    }
+    return DEFAULT_MEDIA_LIBRARY;
+  });
+
   const [isManagerOpen, setIsManagerOpen] = useState(false);
   const [isFirebaseLive, setIsFirebaseLive] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -129,16 +214,19 @@ export const FashionProvider: React.FC<{ children: ReactNode }> = ({ children })
               setInstagramPosts(data.instagramPosts);
               localStorage.setItem(STORAGE_KEY_IG, JSON.stringify(data.instagramPosts));
             }
+            if (Array.isArray(data.mediaLibrary) && data.mediaLibrary.length > 0) {
+              setMediaLibrary(data.mediaLibrary);
+              localStorage.setItem(STORAGE_KEY_LIBRARY, JSON.stringify(data.mediaLibrary));
+            }
             if (data.lastUpdated) {
               setLastSyncedTime(new Date(data.lastUpdated).toLocaleTimeString());
             }
           } else {
-            // First time Firestore initialization - sync defaults
             setIsFirebaseLive(true);
           }
         },
         (error) => {
-          console.warn('Firebase Firestore listening note (operating in resilient local mode):', error.message);
+          console.warn('Firebase Firestore note (resilient local mode):', error.message);
           setIsFirebaseLive(false);
         }
       );
@@ -149,13 +237,14 @@ export const FashionProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   }, []);
 
-  // Helper to persist state to Firestore
+  // Helper to persist state to Firestore & localStorage
   const saveStateToFirestore = async (override?: {
     heroImage?: string;
     newArrivals?: FashionItem[];
     categories?: CollectionCategory[];
     editorialGallery?: FashionItem[];
     instagramPosts?: InstagramPost[];
+    mediaLibrary?: MediaLibraryItem[];
   }) => {
     setIsSyncing(true);
     try {
@@ -165,6 +254,7 @@ export const FashionProvider: React.FC<{ children: ReactNode }> = ({ children })
         categories: override?.categories || categories,
         editorialGallery: override?.editorialGallery || editorialGallery,
         instagramPosts: override?.instagramPosts || instagramPosts,
+        mediaLibrary: override?.mediaLibrary || mediaLibrary,
         lastUpdated: new Date().toISOString(),
       };
 
@@ -181,6 +271,114 @@ export const FashionProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   const syncAllToFirestore = async () => {
     await saveStateToFirestore();
+  };
+
+  // Add items into media library
+  const addToMediaLibrary = async (items: Array<Omit<MediaLibraryItem, 'id' | 'importedAt'>>) => {
+    const newItems: MediaLibraryItem[] = items.map((item, index) => ({
+      ...item,
+      id: `lib-${Date.now()}-${index}-${Math.random().toString(36).substring(2, 6)}`,
+      importedAt: new Date().toISOString(),
+    }));
+
+    const updated = [...newItems, ...mediaLibrary];
+    setMediaLibrary(updated);
+    localStorage.setItem(STORAGE_KEY_LIBRARY, JSON.stringify(updated));
+    await saveStateToFirestore({ mediaLibrary: updated });
+  };
+
+  // Remove item from media library
+  const removeFromMediaLibrary = async (id: string) => {
+    const updated = mediaLibrary.filter((m) => m.id !== id);
+    setMediaLibrary(updated);
+    localStorage.setItem(STORAGE_KEY_LIBRARY, JSON.stringify(updated));
+    await saveStateToFirestore({ mediaLibrary: updated });
+  };
+
+  // Direct Slot Assignment helper ("Jaha Jaha Image Add karni hai waha 1-Click Slot Placement")
+  const assignPhotoToSlot = async (slot: WebsiteSlot, imageUrl: string, metadata?: any) => {
+    if (slot.type === 'hero') {
+      await updateHeroPhoto(imageUrl);
+      return;
+    }
+
+    if (slot.type === 'category') {
+      await updateCategoryPhoto(slot.categoryId, imageUrl);
+      return;
+    }
+
+    if (slot.type === 'replaceNewArrival') {
+      await replaceItemPhoto(slot.itemId, imageUrl);
+      return;
+    }
+
+    if (slot.type === 'instagramPost') {
+      await updateInstagramPostPhoto(slot.postId, imageUrl, slot.caption || metadata?.caption);
+      return;
+    }
+
+    if (slot.type === 'newArrival') {
+      const categoryLabels: Record<string, string> = {
+        tops: 'Tops & Shirts',
+        jeans: 'Jeans & Denims',
+        kurtis: "Kurti's & Sets",
+        bottoms: "Girls' Bottoms",
+      };
+
+      const sizePresets: Record<string, string[]> = {
+        tops: ['XS', 'S', 'M', 'L', 'XL'],
+        jeans: ['26', '28', '30', '32', '34', '36'],
+        kurtis: ['S', 'M', 'L', 'XL', 'XXL', '3XL'],
+        bottoms: ['26-28 (S)', '28-30 (M)', '30-32 (L)', '32-34 (XL)', '34-36 (XXL)'],
+      };
+
+      const targetCategory = slot.category;
+      await addCustomItem(
+        {
+          title: slot.title || metadata?.title || `${categoryLabels[targetCategory]} Boutique Edit`,
+          tag: slot.tag || metadata?.tag || 'INSTAGRAM DROP',
+          image: imageUrl,
+          category: targetCategory,
+          categoryLabel: categoryLabels[targetCategory],
+          description: `Authentic boutique outfit in ${slot.fabric || metadata?.fabric || 'Pure Fabric'}. Available at Clothes Collection, Sadar Bazar, Agra.`,
+          details: {
+            fabric: slot.fabric || metadata?.fabric || 'Pure Boutique Blend',
+            fit: targetCategory === 'jeans' ? 'High-Rise Comfort Fit' : targetCategory === 'kurtis' ? 'A-Line Comfort Cut' : 'Tailored Slim / Relaxed Fit',
+            occasion: 'Everyday, College, Workwear & Parties',
+            sizes: sizePresets[targetCategory] || ['Free Size', 'S', 'M', 'L', 'XL'],
+            care: 'Gentle Wash Recommended',
+          },
+          instagramUrl: metadata?.instagramUrl || 'https://instagram.com/clothcollection.agra',
+        },
+        'new-arrival'
+      );
+      return;
+    }
+
+    if (slot.type === 'editorial') {
+      if (slot.itemId) {
+        await replaceItemPhoto(slot.itemId, imageUrl);
+      } else {
+        await addCustomItem(
+          {
+            title: metadata?.title || 'Editorial Aesthetic Highlight',
+            tag: metadata?.tag || 'EDITORIAL LOOK',
+            image: imageUrl,
+            category: 'tops',
+            categoryLabel: 'Signature Edit',
+            description: 'Curated boutique showcase at Sadar Bazar Agra.',
+            details: {
+              fabric: 'Premium Fabric',
+              fit: 'Signature Silhouette',
+              occasion: 'Occasion & Everyday Luxury',
+              sizes: ['Free Size', 'S', 'M', 'L', 'XL'],
+              care: 'Gentle Care',
+            },
+          },
+          'editorial'
+        );
+      }
+    }
   };
 
   const addCustomItem = async (
@@ -212,7 +410,7 @@ export const FashionProvider: React.FC<{ children: ReactNode }> = ({ children })
         image: newItem.image,
         likes: Math.floor(Math.random() * 400) + 600,
         comments: Math.floor(Math.random() * 40) + 20,
-        caption: `${newItem.title} - Now in store at Clothes Collection, Sadar Bazar, Agra.`,
+        caption: `${newItem.title} - Real boutique drop at Clothes Collection, Sadar Bazar, Agra.`,
         tag: '#ClothCollectionAgra',
       };
       updatedIg = [newPost, ...instagramPosts.slice(0, 5)];
@@ -281,17 +479,20 @@ export const FashionProvider: React.FC<{ children: ReactNode }> = ({ children })
     setEditorialGallery(DEFAULT_EDITORIAL);
     setInstagramPosts(DEFAULT_IG_POSTS);
     setHeroImage(DEFAULT_HERO_IMAGE);
+    setMediaLibrary(DEFAULT_MEDIA_LIBRARY);
     localStorage.removeItem(STORAGE_KEY_ITEMS);
     localStorage.removeItem(STORAGE_KEY_CATEGORIES);
     localStorage.removeItem(STORAGE_KEY_EDITORIAL);
     localStorage.removeItem(STORAGE_KEY_IG);
     localStorage.removeItem(STORAGE_KEY_HERO);
+    localStorage.removeItem(STORAGE_KEY_LIBRARY);
     await saveStateToFirestore({
       heroImage: DEFAULT_HERO_IMAGE,
       newArrivals: DEFAULT_NEW_ARRIVALS,
       categories: DEFAULT_CATEGORIES,
       editorialGallery: DEFAULT_EDITORIAL,
       instagramPosts: DEFAULT_IG_POSTS,
+      mediaLibrary: DEFAULT_MEDIA_LIBRARY,
     });
   };
 
@@ -303,6 +504,7 @@ export const FashionProvider: React.FC<{ children: ReactNode }> = ({ children })
         editorialGallery,
         instagramPosts,
         heroImage,
+        mediaLibrary,
         isFirebaseLive,
         isSyncing,
         lastSyncedTime,
@@ -312,6 +514,9 @@ export const FashionProvider: React.FC<{ children: ReactNode }> = ({ children })
         updateInstagramPostPhoto,
         replaceItemPhoto,
         deleteCustomItem,
+        addToMediaLibrary,
+        removeFromMediaLibrary,
+        assignPhotoToSlot,
         syncAllToFirestore,
         resetToDefaults,
         isManagerOpen,
@@ -330,3 +535,4 @@ export const useFashion = (): FashionContextType => {
   }
   return context;
 };
+
