@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Instagram, MessageCircle, MapPin, Phone, Menu, X, ArrowUpRight, PlusCircle, Sparkles } from 'lucide-react';
+import { Instagram, MessageCircle, MapPin, Phone, Menu, X, ArrowUpRight } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 import { STORE_INFO } from '../data/fashionData';
-import { useFashion } from '../context/FashionContext';
 
 interface NavbarProps {
   onNavigate: (sectionId: string) => void;
@@ -12,7 +11,6 @@ interface NavbarProps {
 export const Navbar: React.FC<NavbarProps> = ({ onNavigate }) => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const { setIsManagerOpen } = useFashion();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -89,22 +87,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onNavigate }) => {
 
           {/* Right Side Actions */}
           <div className="hidden sm:flex items-center gap-3 md:gap-4">
-            {/* Add / Manage Client Photos Trigger */}
-            <button
-              id="btn-nav-manage-photos"
-              onClick={() => setIsManagerOpen(true)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-none text-xs font-semibold tracking-wider transition-all duration-200 border ${
-                isScrolled
-                  ? 'border-[#8B2626] text-[#8B2626] hover:bg-[#8B2626] hover:text-white bg-[#8B2626]/5'
-                  : 'border-[#D4AF37] text-[#D4AF37] hover:bg-[#D4AF37] hover:text-[#1C1917] bg-[#D4AF37]/15 backdrop-blur-xs'
-              }`}
-              title="Upload Client Instagram Photos & Update Collections"
-            >
-              <PlusCircle className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">ADD CLIENT PHOTOS</span>
-              <span className="md:hidden">PHOTOS</span>
-            </button>
-
             {/* Instagram Icon */}
             <a
               id="nav-social-instagram"
@@ -209,18 +191,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onNavigate }) => {
               </div>
 
               <div className="pt-6 border-t border-[#E7DFD5] space-y-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsMobileMenuOpen(false);
-                    setIsManagerOpen(true);
-                  }}
-                  className="w-full flex items-center justify-center gap-2 py-3 bg-[#8B2626] text-white text-xs font-semibold tracking-widest uppercase shadow-sm"
-                >
-                  <PlusCircle className="w-4 h-4 text-[#D4AF37]" />
-                  <span>Add / Manage Client Photos</span>
-                </button>
-
                 <a
                   href={`tel:${STORE_INFO.phoneClean}`}
                   className="w-full flex items-center justify-center gap-2 py-3 bg-[#1C1917] text-white text-xs font-semibold tracking-widest uppercase"

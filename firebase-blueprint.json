@@ -1,0 +1,18 @@
+{
+  "entities": {
+    "BoutiqueContent": {
+      "title": "BoutiqueContent",
+      "type": "object",
+      "description": "Stores live website section configuration, images and product items",
+      "properties": {
+        "heroImage": { "type": "string" },
+        "newArrivals": { "type": "array" },
+        "categories": { "type": "array" },
+        "editorialGallery": { "type": "array" },
+        "instagramPosts": { "type": "array" },
+        "lastUpdated": { "type": "string" }
+      },
+      "required": ["lastUpdated"]
+    }
+  }
+}

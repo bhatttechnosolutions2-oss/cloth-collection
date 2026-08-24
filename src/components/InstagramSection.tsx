@@ -1,11 +1,11 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { Instagram, Heart, MessageCircle, ArrowUpRight, PlusCircle } from 'lucide-react';
+import { Instagram, Heart, MessageCircle, ArrowUpRight } from 'lucide-react';
 import { STORE_INFO } from '../data/fashionData';
 import { useFashion } from '../context/FashionContext';
 
 export const InstagramSection: React.FC = () => {
-  const { instagramPosts, setIsManagerOpen } = useFashion();
+  const { instagramPosts } = useFashion();
 
   return (
     <section className="py-20 sm:py-28 bg-[#FAF7F2] text-[#1C1917] overflow-hidden">
@@ -35,15 +35,6 @@ export const InstagramSection: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-3 self-start md:self-end">
-            <button
-              onClick={() => setIsManagerOpen(true)}
-              className="inline-flex items-center gap-2 px-4 py-3.5 border border-[#8B2626] text-[#8B2626] hover:bg-[#8B2626] hover:text-white text-xs font-semibold tracking-[0.18em] uppercase transition-all duration-300"
-              title="Add or update Instagram photos"
-            >
-              <PlusCircle className="w-4 h-4" />
-              <span>ADD POST PHOTOS</span>
-            </button>
-
             <a
               id="btn-instagram-feed-cta"
               href={STORE_INFO.instagramUrl}

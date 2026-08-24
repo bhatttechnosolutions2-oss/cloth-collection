@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
-import { FashionProvider } from './context/FashionContext';
+import React, { useState, useEffect } from 'react';
+import { FashionProvider, useFashion } from './context/FashionContext';
 import { Navbar } from './components/Navbar';
 import { HeroSection } from './components/HeroSection';
 import { NewEditSection } from './components/NewEditSection';
@@ -23,9 +23,22 @@ import { StickyMobileBar } from './components/StickyMobileBar';
 import { FashionItem } from './types';
 
 function MainApp() {
+  const { setIsManagerOpen } = useFashion();
   const [selectedItem, setSelectedItem] = useState<FashionItem | null>(null);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [activeCategoryFilter, setActiveCategoryFilter] = useState<string>('all');
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Hotkey Alt+A or Ctrl+Shift+A opens Admin Section Studio
+      if ((e.altKey && e.key.toLowerCase() === 'a') || (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'a')) {
+        e.preventDefault();
+        setIsManagerOpen(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [setIsManagerOpen]);
 
   const scrollToSection = (sectionId: string) => {
     if (sectionId === 'hero') {

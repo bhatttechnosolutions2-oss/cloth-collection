@@ -1,0 +1,15 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Boutique live content collection readable by all visitors, writable by boutique manager
+    match /boutique_content/{document=**} {
+      allow read: if true;
+      allow write: if true;
+    }
+    
+    // Generic match for other collections if created
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}

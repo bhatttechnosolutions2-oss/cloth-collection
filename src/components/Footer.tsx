@@ -1,13 +1,15 @@
 import React from 'react';
-import { Instagram, MessageCircle, MapPin, Phone, ArrowUp, Mail, Clock } from 'lucide-react';
+import { Instagram, MessageCircle, MapPin, Phone, ArrowUp, Mail, Clock, Lock } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 import { STORE_INFO } from '../data/fashionData';
+import { useFashion } from '../context/FashionContext';
 
 interface FooterProps {
   onNavigate: (sectionId: string) => void;
 }
 
 export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
+  const { setIsManagerOpen } = useFashion();
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -140,13 +142,25 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
             © {new Date().getFullYear()} Clothes Collection Agra. All rights reserved.
           </div>
 
-          <button
-            onClick={scrollToTop}
-            className="inline-flex items-center gap-1.5 text-stone-300 hover:text-white transition-colors cursor-pointer group"
-          >
-            <span>Back to top</span>
-            <ArrowUp className="w-3.5 h-3.5 transform group-hover:-translate-y-0.5 transition-transform" />
-          </button>
+          <div className="flex items-center gap-6">
+            <button
+              id="btn-footer-admin-login"
+              onClick={() => setIsManagerOpen(true)}
+              className="inline-flex items-center gap-1.5 text-stone-300 hover:text-[#D4AF37] transition-colors cursor-pointer text-[11px] tracking-wider"
+              title="Boutique Manager & Image Backend Portal"
+            >
+              <Lock className="w-3 h-3 text-stone-300 group-hover:text-[#D4AF37]" />
+              <span>Admin Backend Portal</span>
+            </button>
+
+            <button
+              onClick={scrollToTop}
+              className="inline-flex items-center gap-1.5 text-stone-300 hover:text-white transition-colors cursor-pointer group"
+            >
+              <span>Back to top</span>
+              <ArrowUp className="w-3.5 h-3.5 transform group-hover:-translate-y-0.5 transition-transform" />
+            </button>
+          </div>
         </div>
       </div>
     </footer>

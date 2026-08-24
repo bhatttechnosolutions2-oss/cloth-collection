@@ -2,6 +2,7 @@
   "name": "Clothes Collection - Agra",
   "description": "Premium 5th-generation women's fashion boutique in Sadar Bazar, Agra since 1943. Featuring weekly fresh collections, ethnic wear, and modern luxury ready-to-wear.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }
-

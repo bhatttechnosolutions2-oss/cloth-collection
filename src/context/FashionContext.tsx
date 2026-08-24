@@ -6,6 +6,7 @@ import {
   EDITORIAL_GALLERY as DEFAULT_EDITORIAL,
   INSTAGRAM_POSTS as DEFAULT_IG_POSTS,
 } from '../data/fashionData';
+import { db, doc, setDoc, onSnapshot } from '../lib/firebase';
 
 interface FashionContextType {
   newArrivals: FashionItem[];
@@ -13,13 +14,18 @@ interface FashionContextType {
   editorialGallery: FashionItem[];
   instagramPosts: InstagramPost[];
   heroImage: string;
-  addCustomItem: (item: Omit<FashionItem, 'id'>, placement: 'new-arrival' | 'editorial' | 'instagram' | 'all') => void;
-  updateCategoryPhoto: (categoryId: string, newImageUrl: string) => void;
-  updateHeroPhoto: (newImageUrl: string) => void;
-  updateInstagramPostPhoto: (postId: string, newImageUrl: string, newCaption?: string) => void;
-  replaceItemPhoto: (itemId: string, newImageUrl: string) => void;
-  deleteCustomItem: (itemId: string) => void;
-  resetToDefaults: () => void;
+  isFirebaseLive: boolean;
+  isSyncing: boolean;
+  lastSyncedTime: string | null;
+  // Section-wise mutation actions
+  addCustomItem: (item: Omit<FashionItem, 'id'>, placement: 'new-arrival' | 'editorial' | 'instagram' | 'all') => Promise<void>;
+  updateCategoryPhoto: (categoryId: string, newImageUrl: string) => Promise<void>;
+  updateHeroPhoto: (newImageUrl: string) => Promise<void>;
+  updateInstagramPostPhoto: (postId: string, newImageUrl: string, newCaption?: string) => Promise<void>;
+  replaceItemPhoto: (itemId: string, newImageUrl: string) => Promise<void>;
+  deleteCustomItem: (itemId: string) => Promise<void>;
+  syncAllToFirestore: () => Promise<void>;
+  resetToDefaults: () => Promise<void>;
   isManagerOpen: boolean;
   setIsManagerOpen: (open: boolean) => void;
 }
@@ -89,29 +95,95 @@ export const FashionProvider: React.FC<{ children: ReactNode }> = ({ children })
   });
 
   const [isManagerOpen, setIsManagerOpen] = useState(false);
+  const [isFirebaseLive, setIsFirebaseLive] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncedTime, setLastSyncedTime] = useState<string | null>(null);
 
-  // Sync to localStorage
+  // 1. Listen for Real-Time Changes from Firebase Firestore
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_ITEMS, JSON.stringify(newArrivals));
-  }, [newArrivals]);
+    try {
+      const liveDocRef = doc(db, 'boutique_content', 'live_state');
+      const unsubscribe = onSnapshot(
+        liveDocRef,
+        (snapshot) => {
+          if (snapshot.exists()) {
+            const data = snapshot.data();
+            setIsFirebaseLive(true);
+            if (data.heroImage) {
+              setHeroImage(data.heroImage);
+              localStorage.setItem(STORAGE_KEY_HERO, data.heroImage);
+            }
+            if (Array.isArray(data.newArrivals) && data.newArrivals.length > 0) {
+              setNewArrivals(data.newArrivals);
+              localStorage.setItem(STORAGE_KEY_ITEMS, JSON.stringify(data.newArrivals));
+            }
+            if (Array.isArray(data.categories) && data.categories.length > 0) {
+              setCategories(data.categories);
+              localStorage.setItem(STORAGE_KEY_CATEGORIES, JSON.stringify(data.categories));
+            }
+            if (Array.isArray(data.editorialGallery) && data.editorialGallery.length > 0) {
+              setEditorialGallery(data.editorialGallery);
+              localStorage.setItem(STORAGE_KEY_EDITORIAL, JSON.stringify(data.editorialGallery));
+            }
+            if (Array.isArray(data.instagramPosts) && data.instagramPosts.length > 0) {
+              setInstagramPosts(data.instagramPosts);
+              localStorage.setItem(STORAGE_KEY_IG, JSON.stringify(data.instagramPosts));
+            }
+            if (data.lastUpdated) {
+              setLastSyncedTime(new Date(data.lastUpdated).toLocaleTimeString());
+            }
+          } else {
+            // First time Firestore initialization - sync defaults
+            setIsFirebaseLive(true);
+          }
+        },
+        (error) => {
+          console.warn('Firebase Firestore listening note (operating in resilient local mode):', error.message);
+          setIsFirebaseLive(false);
+        }
+      );
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_CATEGORIES, JSON.stringify(categories));
-  }, [categories]);
+      return () => unsubscribe();
+    } catch (err) {
+      console.warn('Firestore initial connection note:', err);
+    }
+  }, []);
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_EDITORIAL, JSON.stringify(editorialGallery));
-  }, [editorialGallery]);
+  // Helper to persist state to Firestore
+  const saveStateToFirestore = async (override?: {
+    heroImage?: string;
+    newArrivals?: FashionItem[];
+    categories?: CollectionCategory[];
+    editorialGallery?: FashionItem[];
+    instagramPosts?: InstagramPost[];
+  }) => {
+    setIsSyncing(true);
+    try {
+      const payload = {
+        heroImage: override?.heroImage || heroImage,
+        newArrivals: override?.newArrivals || newArrivals,
+        categories: override?.categories || categories,
+        editorialGallery: override?.editorialGallery || editorialGallery,
+        instagramPosts: override?.instagramPosts || instagramPosts,
+        lastUpdated: new Date().toISOString(),
+      };
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_IG, JSON.stringify(instagramPosts));
-  }, [instagramPosts]);
+      const liveDocRef = doc(db, 'boutique_content', 'live_state');
+      await setDoc(liveDocRef, payload, { merge: true });
+      setLastSyncedTime(new Date().toLocaleTimeString());
+      setIsFirebaseLive(true);
+    } catch (e) {
+      console.warn('Firestore save note (saved locally):', e);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_HERO, heroImage);
-  }, [heroImage]);
+  const syncAllToFirestore = async () => {
+    await saveStateToFirestore();
+  };
 
-  const addCustomItem = (
+  const addCustomItem = async (
     itemData: Omit<FashionItem, 'id'>,
     placement: 'new-arrival' | 'editorial' | 'instagram' | 'all'
   ) => {
@@ -120,11 +192,19 @@ export const FashionProvider: React.FC<{ children: ReactNode }> = ({ children })
       id: `custom-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
     };
 
+    let updatedNewArrivals = newArrivals;
+    let updatedEditorial = editorialGallery;
+    let updatedIg = instagramPosts;
+
     if (placement === 'new-arrival' || placement === 'all') {
-      setNewArrivals((prev) => [newItem, ...prev]);
+      updatedNewArrivals = [newItem, ...newArrivals];
+      setNewArrivals(updatedNewArrivals);
+      localStorage.setItem(STORAGE_KEY_ITEMS, JSON.stringify(updatedNewArrivals));
     }
     if (placement === 'editorial' || placement === 'all') {
-      setEditorialGallery((prev) => [newItem, ...prev]);
+      updatedEditorial = [newItem, ...editorialGallery];
+      setEditorialGallery(updatedEditorial);
+      localStorage.setItem(STORAGE_KEY_EDITORIAL, JSON.stringify(updatedEditorial));
     }
     if (placement === 'instagram') {
       const newPost: InstagramPost = {
@@ -135,49 +215,67 @@ export const FashionProvider: React.FC<{ children: ReactNode }> = ({ children })
         caption: `${newItem.title} - Now in store at Clothes Collection, Sadar Bazar, Agra.`,
         tag: '#ClothCollectionAgra',
       };
-      setInstagramPosts((prev) => [newPost, ...prev.slice(0, 5)]);
+      updatedIg = [newPost, ...instagramPosts.slice(0, 5)];
+      setInstagramPosts(updatedIg);
+      localStorage.setItem(STORAGE_KEY_IG, JSON.stringify(updatedIg));
     }
+
+    await saveStateToFirestore({
+      newArrivals: updatedNewArrivals,
+      editorialGallery: updatedEditorial,
+      instagramPosts: updatedIg,
+    });
   };
 
-  const updateCategoryPhoto = (categoryId: string, newImageUrl: string) => {
-    setCategories((prev) =>
-      prev.map((c) => (c.id === categoryId ? { ...c, image: newImageUrl } : c))
-    );
+  const updateCategoryPhoto = async (categoryId: string, newImageUrl: string) => {
+    const updated = categories.map((c) => (c.id === categoryId ? { ...c, image: newImageUrl } : c));
+    setCategories(updated);
+    localStorage.setItem(STORAGE_KEY_CATEGORIES, JSON.stringify(updated));
+    await saveStateToFirestore({ categories: updated });
   };
 
-  const updateHeroPhoto = (newImageUrl: string) => {
+  const updateHeroPhoto = async (newImageUrl: string) => {
     setHeroImage(newImageUrl);
+    localStorage.setItem(STORAGE_KEY_HERO, newImageUrl);
+    await saveStateToFirestore({ heroImage: newImageUrl });
   };
 
-  const updateInstagramPostPhoto = (postId: string, newImageUrl: string, newCaption?: string) => {
-    setInstagramPosts((prev) =>
-      prev.map((p) =>
-        p.id === postId
-          ? {
-              ...p,
-              image: newImageUrl,
-              ...(newCaption ? { caption: newCaption } : {}),
-            }
-          : p
-      )
+  const updateInstagramPostPhoto = async (postId: string, newImageUrl: string, newCaption?: string) => {
+    const updated = instagramPosts.map((p) =>
+      p.id === postId
+        ? {
+            ...p,
+            image: newImageUrl,
+            ...(newCaption ? { caption: newCaption } : {}),
+          }
+        : p
     );
+    setInstagramPosts(updated);
+    localStorage.setItem(STORAGE_KEY_IG, JSON.stringify(updated));
+    await saveStateToFirestore({ instagramPosts: updated });
   };
 
-  const replaceItemPhoto = (itemId: string, newImageUrl: string) => {
-    setNewArrivals((prev) =>
-      prev.map((it) => (it.id === itemId ? { ...it, image: newImageUrl } : it))
-    );
-    setEditorialGallery((prev) =>
-      prev.map((it) => (it.id === itemId ? { ...it, image: newImageUrl } : it))
-    );
+  const replaceItemPhoto = async (itemId: string, newImageUrl: string) => {
+    const updatedArr = newArrivals.map((it) => (it.id === itemId ? { ...it, image: newImageUrl } : it));
+    const updatedEd = editorialGallery.map((it) => (it.id === itemId ? { ...it, image: newImageUrl } : it));
+    setNewArrivals(updatedArr);
+    setEditorialGallery(updatedEd);
+    localStorage.setItem(STORAGE_KEY_ITEMS, JSON.stringify(updatedArr));
+    localStorage.setItem(STORAGE_KEY_EDITORIAL, JSON.stringify(updatedEd));
+    await saveStateToFirestore({ newArrivals: updatedArr, editorialGallery: updatedEd });
   };
 
-  const deleteCustomItem = (itemId: string) => {
-    setNewArrivals((prev) => prev.filter((it) => it.id !== itemId));
-    setEditorialGallery((prev) => prev.filter((it) => it.id !== itemId));
+  const deleteCustomItem = async (itemId: string) => {
+    const updatedArr = newArrivals.filter((it) => it.id !== itemId);
+    const updatedEd = editorialGallery.filter((it) => it.id !== itemId);
+    setNewArrivals(updatedArr);
+    setEditorialGallery(updatedEd);
+    localStorage.setItem(STORAGE_KEY_ITEMS, JSON.stringify(updatedArr));
+    localStorage.setItem(STORAGE_KEY_EDITORIAL, JSON.stringify(updatedEd));
+    await saveStateToFirestore({ newArrivals: updatedArr, editorialGallery: updatedEd });
   };
 
-  const resetToDefaults = () => {
+  const resetToDefaults = async () => {
     setNewArrivals(DEFAULT_NEW_ARRIVALS);
     setCategories(DEFAULT_CATEGORIES);
     setEditorialGallery(DEFAULT_EDITORIAL);
@@ -188,6 +286,13 @@ export const FashionProvider: React.FC<{ children: ReactNode }> = ({ children })
     localStorage.removeItem(STORAGE_KEY_EDITORIAL);
     localStorage.removeItem(STORAGE_KEY_IG);
     localStorage.removeItem(STORAGE_KEY_HERO);
+    await saveStateToFirestore({
+      heroImage: DEFAULT_HERO_IMAGE,
+      newArrivals: DEFAULT_NEW_ARRIVALS,
+      categories: DEFAULT_CATEGORIES,
+      editorialGallery: DEFAULT_EDITORIAL,
+      instagramPosts: DEFAULT_IG_POSTS,
+    });
   };
 
   return (
@@ -198,12 +303,16 @@ export const FashionProvider: React.FC<{ children: ReactNode }> = ({ children })
         editorialGallery,
         instagramPosts,
         heroImage,
+        isFirebaseLive,
+        isSyncing,
+        lastSyncedTime,
         addCustomItem,
         updateCategoryPhoto,
         updateHeroPhoto,
         updateInstagramPostPhoto,
         replaceItemPhoto,
         deleteCustomItem,
+        syncAllToFirestore,
         resetToDefaults,
         isManagerOpen,
         setIsManagerOpen,

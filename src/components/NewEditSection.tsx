@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { ArrowUpRight, Sparkles, MessageCircle, Eye, PlusCircle } from 'lucide-react';
+import { ArrowUpRight, Sparkles, MessageCircle, Eye } from 'lucide-react';
 import { STORE_INFO } from '../data/fashionData';
 import { FashionItem } from '../types';
 import { useFashion } from '../context/FashionContext';
@@ -14,7 +14,7 @@ export const NewEditSection: React.FC<NewEditSectionProps> = ({
   onSelectItem,
   onExploreAll,
 }) => {
-  const { newArrivals, setIsManagerOpen } = useFashion();
+  const { newArrivals } = useFashion();
   return (
     <section id="new-arrivals" className="py-20 sm:py-28 bg-[#FAF7F2] text-[#1C1917]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -43,15 +43,6 @@ export const NewEditSection: React.FC<NewEditSectionProps> = ({
 
           {/* Header Actions */}
           <div className="flex items-center gap-3 self-start md:self-end">
-            <button
-              onClick={() => setIsManagerOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-[#8B2626] text-[#8B2626] hover:bg-[#8B2626] hover:text-white text-xs font-semibold tracking-wider transition-colors"
-              title="Add photos from Instagram or Device"
-            >
-              <PlusCircle className="w-3.5 h-3.5" />
-              <span>ADD PHOTOS</span>
-            </button>
-
             <button
               id="btn-explore-all-new"
               onClick={onExploreAll}

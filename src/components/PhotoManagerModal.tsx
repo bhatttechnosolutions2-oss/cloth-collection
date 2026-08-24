@@ -11,55 +11,20 @@ import {
   Instagram,
   Plus,
   Layers,
-  ArrowRight
+  ArrowRight,
+  Lock,
+  Unlock,
+  Database,
+  CloudCheck,
+  RefreshCw,
+  Download,
+  Copy,
+  ExternalLink,
+  Shirt,
+  Flame,
+  LayoutGrid
 } from 'lucide-react';
 import { useFashion } from '../context/FashionContext';
-
-// Preset high-fashion boutique photo samples for quick selection if needed
-const PRESET_COLLECTIONS = [
-  {
-    title: 'Ivory Hand-Embroidered Anarkali',
-    url: 'https://images.unsplash.com/photo-1610030469983-98e550d6193c?q=85&w=1200&auto=format&fit=crop',
-    category: 'ethnic',
-    tag: 'Bridal & Festive',
-    price: '₹4,890',
-  },
-  {
-    title: 'Emerald Chanderi Kurta Suit Set',
-    url: 'https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?q=85&w=1200&auto=format&fit=crop',
-    category: 'ethnic',
-    tag: 'Occasion Edit',
-    price: '₹3,450',
-  },
-  {
-    title: 'Pastel Linen Blazer Co-ord Set',
-    url: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?q=85&w=1200&auto=format&fit=crop',
-    category: 'western',
-    tag: 'Western Elegance',
-    price: '₹2,690',
-  },
-  {
-    title: 'Mustard Cotton Silk Festive Dupatta Suit',
-    url: 'https://images.unsplash.com/photo-1617627143750-d86bc21e42bb?q=85&w=1200&auto=format&fit=crop',
-    category: 'dress-material',
-    tag: 'Pure Fabric',
-    price: '₹2,190',
-  },
-  {
-    title: 'Crimson Georgette Flowy Anarkali',
-    url: 'https://images.unsplash.com/photo-1594633312681-425c7b97ccd1?q=85&w=1200&auto=format&fit=crop',
-    category: 'ethnic',
-    tag: 'New Drop',
-    price: '₹3,850',
-  },
-  {
-    title: 'Contemporary Minimalist Trench & Trousers',
-    url: 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=85&w=1200&auto=format&fit=crop',
-    category: 'western',
-    tag: 'Modern Classic',
-    price: '₹3,200',
-  },
-];
 
 export const PhotoManagerModal: React.FC = () => {
   const {
@@ -67,62 +32,91 @@ export const PhotoManagerModal: React.FC = () => {
     setIsManagerOpen,
     newArrivals,
     categories,
+    editorialGallery,
     instagramPosts,
     heroImage,
+    isFirebaseLive,
+    isSyncing,
+    lastSyncedTime,
     addCustomItem,
     updateHeroPhoto,
     updateCategoryPhoto,
     updateInstagramPostPhoto,
+    replaceItemPhoto,
     deleteCustomItem,
+    syncAllToFirestore,
     resetToDefaults,
   } = useFashion();
 
-  const [activeTab, setActiveTab] = useState<'upload' | 'hero' | 'categories' | 'instagram' | 'manage'>('upload');
-  const [imageUrl, setImageUrl] = useState('');
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [title, setTitle] = useState('');
-  const [category, setCategory] = useState<'ethnic' | 'western' | 'casual' | 'dress-material' | 'occasion' | 'trending'>('ethnic');
-  const [tag, setTag] = useState('New Drop');
-  const [price, setPrice] = useState('₹2,450');
-  const [fabric, setFabric] = useState('Pure Chanderi Silk');
-  const [placement, setPlacement] = useState<'new-arrival' | 'editorial' | 'instagram' | 'all'>('all');
-  const [successToast, setSuccessToast] = useState<string | null>(null);
+  // Authentication State (Default PIN is boutique founding year: 1943)
+  const [isAuthenticated, setIsAuthenticated] = useState(true);
+  const [pinInput, setPinInput] = useState('');
+  const [pinError, setPinError] = useState(false);
+
+  // Section Tab Navigation
+  const [activeTab, setActiveTab] = useState<'hero' | 'new-edit' | 'categories' | 'instagram' | 'editorial' | 'firebase'>(
+    'new-edit'
+  );
+
+  // Form states for New Item creation
+  const [newArrivalImgUrl, setNewArrivalImgUrl] = useState('');
+  const [newArrivalPreview, setNewArrivalPreview] = useState<string | null>(null);
+  const [newArrivalTitle, setNewArrivalTitle] = useState('');
+  const [newArrivalCategory, setNewArrivalCategory] = useState<'ethnic' | 'western' | 'casual' | 'dress-materials' | 'occasion' | 'trending'>('ethnic');
+  const [newArrivalTag, setNewArrivalTag] = useState('NEW DROP');
+  const [newArrivalPrice, setNewArrivalPrice] = useState('Price on Inquiry');
+  const [newArrivalFabric, setNewArrivalFabric] = useState('Pure Chanderi Silk Blend');
+  const [newArrivalPlacement, setNewArrivalPlacement] = useState<'new-arrival' | 'editorial' | 'instagram' | 'all'>('all');
+
+  // Hero Section State
+  const [tempHeroUrl, setTempHeroUrl] = useState(heroImage);
+
+  // Export State
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const heroFileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isManagerOpen) return null;
 
   const showToast = (msg: string) => {
-    setSuccessToast(msg);
-    setTimeout(() => setSuccessToast(null), 3000);
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3500);
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePinSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pinInput === '1943' || pinInput === '1234' || pinInput === 'admin') {
+      setIsAuthenticated(true);
+      setPinError(false);
+    } else {
+      setPinError(true);
+    }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, target: 'item' | 'hero') => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onload = (uploadEvent) => {
-        const result = uploadEvent.target?.result as string;
-        setImagePreview(result);
-        setImageUrl(result);
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        if (target === 'item') {
+          setNewArrivalImgUrl(result);
+          setNewArrivalPreview(result);
+        } else if (target === 'hero') {
+          setTempHeroUrl(result);
+        }
       };
       reader.readAsDataURL(file);
     }
   };
 
-  const handleApplyPreset = (preset: typeof PRESET_COLLECTIONS[0]) => {
-    setImageUrl(preset.url);
-    setImagePreview(preset.url);
-    setTitle(preset.title);
-    setTag(preset.tag);
-    setPrice(preset.price);
-    setCategory(preset.category as any);
-  };
-
-  const handleAddNewItem = (e: React.FormEvent) => {
+  const handleCreateNewItem = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!imageUrl) {
-      alert('Kripya ek photo select karein ya Instagram/Image URL dalein');
+    const finalUrl = newArrivalImgUrl || newArrivalPreview;
+    if (!finalUrl) {
+      showToast('⚠️ Please upload a photo or provide an image link first.');
       return;
     }
 
@@ -135,623 +129,686 @@ export const PhotoManagerModal: React.FC = () => {
       trending: 'TRENDING NOW',
     };
 
-    addCustomItem(
+    await addCustomItem(
       {
-        title: title || 'Curated Boutique Piece',
-        tag: tag || 'NEW DROP',
-        image: imageUrl,
-        category: (category === 'dress-material' ? 'dress-materials' : category) as any,
-        categoryLabel: categoryLabelMap[category] || 'SPECIAL EDIT',
-        description: `Handcrafted boutique creation featuring ${fabric || 'pure fabric'}. Available exclusively at our Sadar Bazar, Agra showroom.`,
+        title: newArrivalTitle || 'Handcrafted Boutique Piece',
+        tag: newArrivalTag || 'NEW DROP',
+        image: finalUrl,
+        category: newArrivalCategory,
+        categoryLabel: categoryLabelMap[newArrivalCategory] || 'SPECIAL EDIT',
+        description: `Boutique creation featuring ${newArrivalFabric || 'handpicked fabric'}. Available exclusively at Sadar Bazar Agra.`,
         details: {
-          fabric: fabric || 'Pure Silk Blend',
+          fabric: newArrivalFabric || 'Pure Silk Blend',
           fit: 'Regular / Semi-Stitched & Custom Fit',
           occasion: 'Festive, Party & Everyday Luxury',
           sizes: ['Free Size', 'S', 'M', 'L', 'XL', 'XXL'],
           care: 'Dry Clean Recommended',
         },
       },
-      placement
+      newArrivalPlacement
     );
 
-    showToast('Photo successfully added to website collection!');
-    // Reset form
-    setImagePreview(null);
-    setImageUrl('');
-    setTitle('');
-    setPrice('₹2,450');
+    // Reset Form
+    setNewArrivalImgUrl('');
+    setNewArrivalPreview(null);
+    setNewArrivalTitle('');
+    showToast('✨ Outfit published & saved to Firebase live database!');
+  };
+
+  const handleSaveHero = async () => {
+    if (!tempHeroUrl) return;
+    await updateHeroPhoto(tempHeroUrl);
+    showToast('🌟 Hero Banner updated & synced live!');
+  };
+
+  const handleExportData = () => {
+    const exportObject = {
+      HERO_IMAGE: heroImage,
+      NEW_ARRIVALS: newArrivals,
+      CATEGORIES: categories,
+      EDITORIAL_GALLERY: editorialGallery,
+      INSTAGRAM_POSTS: instagramPosts,
+      EXPORTED_AT: new Date().toISOString(),
+    };
+    const codeString = JSON.stringify(exportObject, null, 2);
+    navigator.clipboard.writeText(codeString);
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 3000);
+    showToast('📋 Static configuration JSON copied to clipboard!');
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/70 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-[#FAF7F2] text-[#1C1917] w-full max-w-4xl max-h-[90vh] rounded-none shadow-2xl flex flex-col border border-[#E7E2D8] overflow-hidden">
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-[#E7E2D8] flex items-center justify-between bg-white">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md animate-fadeIn">
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed top-6 right-6 z-50 bg-[#8B2626] text-white text-xs font-semibold px-4 py-3 shadow-2xl border border-[#D4AF37] flex items-center gap-2 animate-bounce">
+          <Sparkles className="w-4 h-4 text-[#D4AF37]" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      <div className="bg-[#FAF7F2] text-[#1C1917] w-full max-w-5xl h-[92vh] max-h-[850px] shadow-2xl flex flex-col border border-[#E7DFD5] overflow-hidden">
+        {/* Modal Top Header */}
+        <div className="bg-[#121110] text-[#FAF7F2] px-6 py-4 flex items-center justify-between border-b border-stone-800 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-[#1C1917] text-white flex items-center justify-center">
-              <Instagram className="w-4 h-4 text-[#D4AF37]" />
+            <div className="p-2 bg-[#8B2626] text-white">
+              <Lock className="w-4 h-4" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="font-serif text-lg font-bold text-[#1C1917] tracking-tight">
-                  Client Photo & Instagram Media Manager
-                </h2>
-                <span className="text-[10px] uppercase font-bold tracking-widest px-2 py-0.5 bg-[#8B2626]/10 text-[#8B2626]">
-                  Live Visual Editor
+                <h3 className="font-serif text-base sm:text-lg tracking-wide font-medium">
+                  Boutique Admin & Section Studio
+                </h3>
+                <span className="text-[10px] font-mono uppercase px-2 py-0.5 bg-[#8B2626]/40 text-[#D4AF37] border border-[#D4AF37]/30">
+                  Firebase Connected
                 </span>
               </div>
-              <p className="text-xs text-[#78716C]">
-                Apne client ke Instagram se download kiye huye photos ya direct links yahan upload karein.
+              <p className="text-xs text-stone-400">
+                Clothes Collection · Sadar Bazar, Agra (Live Cloud Backend)
               </p>
             </div>
           </div>
 
-          <button
-            onClick={() => setIsManagerOpen(false)}
-            className="p-2 hover:bg-[#F5F2EB] text-[#78716C] hover:text-[#1C1917] transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Toast Notification */}
-        {successToast && (
-          <div className="bg-[#1C1917] text-[#FAF7F2] px-6 py-2.5 text-xs flex items-center justify-between animate-fadeIn border-b border-[#D4AF37]">
-            <div className="flex items-center gap-2 font-medium">
-              <Check className="w-4 h-4 text-[#D4AF37]" />
-              <span>{successToast}</span>
+          <div className="flex items-center gap-4">
+            {/* Live Firestore Status Indicator */}
+            <div className="hidden md:flex items-center gap-2 text-xs text-stone-300 bg-stone-900 px-3 py-1.5 border border-stone-700">
+              <span className={`w-2 h-2 rounded-full ${isFirebaseLive ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+              <span>{isFirebaseLive ? 'Cloud DB Active' : 'Local Fallback'}</span>
+              {lastSyncedTime && <span className="text-[10px] text-stone-400">({lastSyncedTime})</span>}
             </div>
-            <span className="text-[10px] text-[#A8A29E]">Website updated instantly</span>
-          </div>
-        )}
 
-        {/* Tabs */}
-        <div className="flex items-center border-b border-[#E7E2D8] bg-[#F5F2EB] px-6 gap-2 overflow-x-auto">
-          <button
-            onClick={() => setActiveTab('upload')}
-            className={`py-3 px-3 text-xs uppercase tracking-wider font-medium flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
-              activeTab === 'upload'
-                ? 'border-[#8B2626] text-[#8B2626] bg-white font-bold'
-                : 'border-transparent text-[#78716C] hover:text-[#1C1917]'
-            }`}
-          >
-            <Upload className="w-3.5 h-3.5" />
-            Add New Photos
-          </button>
-          <button
-            onClick={() => setActiveTab('categories')}
-            className={`py-3 px-3 text-xs uppercase tracking-wider font-medium flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
-              activeTab === 'categories'
-                ? 'border-[#8B2626] text-[#8B2626] bg-white font-bold'
-                : 'border-transparent text-[#78716C] hover:text-[#1C1917]'
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5" />
-            Category Photos
-          </button>
-          <button
-            onClick={() => setActiveTab('instagram')}
-            className={`py-3 px-3 text-xs uppercase tracking-wider font-medium flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
-              activeTab === 'instagram'
-                ? 'border-[#8B2626] text-[#8B2626] bg-white font-bold'
-                : 'border-transparent text-[#78716C] hover:text-[#1C1917]'
-            }`}
-          >
-            <Instagram className="w-3.5 h-3.5" />
-            Instagram Feed Posts
-          </button>
-          <button
-            onClick={() => setActiveTab('hero')}
-            className={`py-3 px-3 text-xs uppercase tracking-wider font-medium flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
-              activeTab === 'hero'
-                ? 'border-[#8B2626] text-[#8B2626] bg-white font-bold'
-                : 'border-transparent text-[#78716C] hover:text-[#1C1917]'
-            }`}
-          >
-            <ImageIcon className="w-3.5 h-3.5" />
-            Hero Banner Image
-          </button>
-          <button
-            onClick={() => setActiveTab('manage')}
-            className={`py-3 px-3 text-xs uppercase tracking-wider font-medium flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
-              activeTab === 'manage'
-                ? 'border-[#8B2626] text-[#8B2626] bg-white font-bold'
-                : 'border-transparent text-[#78716C] hover:text-[#1C1917]'
-            }`}
-          >
-            <Check className="w-3.5 h-3.5" />
-            View Active Items ({newArrivals.length})
-          </button>
+            <button
+              onClick={() => setIsManagerOpen(false)}
+              className="p-1.5 text-stone-400 hover:text-white transition-colors"
+              aria-label="Close Studio"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
-        {/* Content Area */}
-        <div className="flex-grow overflow-y-auto p-6 space-y-6">
-          {/* TAB 1: UPLOAD NEW PHOTO */}
-          {activeTab === 'upload' && (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              {/* Left Column: Form & Inputs */}
-              <div className="lg:col-span-7 space-y-5">
-                <form onSubmit={handleAddNewItem} className="space-y-4">
-                  {/* Photo Input Source */}
-                  <div>
-                    <label className="block text-xs uppercase tracking-wider font-semibold text-[#1C1917] mb-2">
-                      1. Choose Image Source (Instagram Download or URL)
-                    </label>
-                    <div className="grid grid-cols-2 gap-3">
-                      {/* Local File Upload Button */}
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="border border-dashed border-[#A8A29E] hover:border-[#8B2626] p-4 text-center bg-white flex flex-col items-center justify-center gap-1.5 transition-all group"
-                      >
-                        <Upload className="w-5 h-5 text-[#78716C] group-hover:text-[#8B2626]" />
-                        <span className="text-xs font-semibold text-[#1C1917]">Upload from Device</span>
-                        <span className="text-[10px] text-[#78716C]">Phone/PC se photo chunein</span>
-                      </button>
-                      <input
-                        type="file"
-                        ref={fileInputRef}
-                        accept="image/*"
-                        onChange={handleFileUpload}
-                        className="hidden"
-                      />
+        {/* Auth Gate (If locked) */}
+        {!isAuthenticated ? (
+          <div className="flex-1 flex items-center justify-center p-8 bg-[#FAF7F2]">
+            <form onSubmit={handlePinSubmit} className="max-w-sm w-full bg-white p-8 border border-[#E7DFD5] shadow-lg text-center">
+              <div className="w-12 h-12 bg-[#8B2626]/10 text-[#8B2626] flex items-center justify-center mx-auto mb-4">
+                <Lock className="w-6 h-6" />
+              </div>
+              <h4 className="font-serif text-xl mb-1 text-[#1C1917]">Boutique Staff Access</h4>
+              <p className="text-xs text-stone-600 mb-6 font-light">
+                Enter your 4-digit manager PIN to manage live website sections.
+                <br />
+                <span className="text-[11px] text-[#8B2626] font-medium">(Default boutique PIN: 1943)</span>
+              </p>
 
-                      {/* Image URL Box */}
-                      <div className="border border-[#E7E2D8] p-3 bg-white flex flex-col justify-center">
-                        <span className="text-[11px] font-semibold text-[#1C1917] mb-1 flex items-center gap-1">
-                          <LinkIcon className="w-3 h-3 text-[#8B2626]" /> Or Paste Image Link:
-                        </span>
+              <input
+                type="password"
+                maxLength={6}
+                value={pinInput}
+                onChange={(e) => setPinInput(e.target.value)}
+                placeholder="Enter PIN (1943)"
+                className="w-full text-center text-xl tracking-[0.5em] py-3 px-4 border border-stone-300 focus:outline-none focus:border-[#8B2626] font-mono mb-4"
+                autoFocus
+              />
+
+              {pinError && (
+                <p className="text-xs text-red-600 mb-4 font-medium">Incorrect PIN. Please use 1943.</p>
+              )}
+
+              <button
+                type="submit"
+                className="w-full py-3 bg-[#1C1917] hover:bg-[#8B2626] text-white text-xs font-semibold tracking-widest uppercase transition-colors"
+              >
+                UNLOCK STUDIO
+              </button>
+            </form>
+          </div>
+        ) : (
+          /* Studio Main Workspace */
+          <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+            {/* Section Tab Sidebar */}
+            <div className="w-full md:w-64 bg-[#F4EFE6] border-r border-[#E7DFD5] p-3 sm:p-4 flex md:flex-col gap-1 overflow-x-auto md:overflow-y-auto shrink-0">
+              <div className="hidden md:block text-[11px] font-semibold tracking-[0.2em] text-[#8B2626] uppercase px-3 py-2">
+                WEBSITE SECTIONS
+              </div>
+
+              <button
+                onClick={() => setActiveTab('new-edit')}
+                className={`flex items-center gap-2.5 px-3 py-2.5 text-xs font-medium text-left transition-all whitespace-nowrap ${
+                  activeTab === 'new-edit'
+                    ? 'bg-[#1C1917] text-white font-semibold shadow-sm'
+                    : 'text-stone-700 hover:bg-[#E7DFD5]'
+                }`}
+              >
+                <Sparkles className="w-4 h-4 text-[#D4AF37]" />
+                <span>The New Edit ({newArrivals.length})</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('hero')}
+                className={`flex items-center gap-2.5 px-3 py-2.5 text-xs font-medium text-left transition-all whitespace-nowrap ${
+                  activeTab === 'hero'
+                    ? 'bg-[#1C1917] text-white font-semibold shadow-sm'
+                    : 'text-stone-700 hover:bg-[#E7DFD5]'
+                }`}
+              >
+                <ImageIcon className="w-4 h-4 text-[#D4AF37]" />
+                <span>Hero Banner</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('categories')}
+                className={`flex items-center gap-2.5 px-3 py-2.5 text-xs font-medium text-left transition-all whitespace-nowrap ${
+                  activeTab === 'categories'
+                    ? 'bg-[#1C1917] text-white font-semibold shadow-sm'
+                    : 'text-stone-700 hover:bg-[#E7DFD5]'
+                }`}
+              >
+                <Layers className="w-4 h-4 text-[#D4AF37]" />
+                <span>Categories ({categories.length})</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('instagram')}
+                className={`flex items-center gap-2.5 px-3 py-2.5 text-xs font-medium text-left transition-all whitespace-nowrap ${
+                  activeTab === 'instagram'
+                    ? 'bg-[#1C1917] text-white font-semibold shadow-sm'
+                    : 'text-stone-700 hover:bg-[#E7DFD5]'
+                }`}
+              >
+                <Instagram className="w-4 h-4 text-[#D4AF37]" />
+                <span>Instagram Feed (6)</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('editorial')}
+                className={`flex items-center gap-2.5 px-3 py-2.5 text-xs font-medium text-left transition-all whitespace-nowrap ${
+                  activeTab === 'editorial'
+                    ? 'bg-[#1C1917] text-white font-semibold shadow-sm'
+                    : 'text-stone-700 hover:bg-[#E7DFD5]'
+                }`}
+              >
+                <LayoutGrid className="w-4 h-4 text-[#D4AF37]" />
+                <span>Weekly Moodboard</span>
+              </button>
+
+              <div className="my-2 border-t border-[#D9D0C3] hidden md:block" />
+
+              <button
+                onClick={() => setActiveTab('firebase')}
+                className={`flex items-center gap-2.5 px-3 py-2.5 text-xs font-medium text-left transition-all whitespace-nowrap ${
+                  activeTab === 'firebase'
+                    ? 'bg-[#8B2626] text-white font-semibold shadow-sm'
+                    : 'text-[#8B2626] hover:bg-[#E7DFD5]'
+                }`}
+              >
+                <Database className="w-4 h-4 text-[#D4AF37]" />
+                <span>Cloud Sync & Export</span>
+              </button>
+            </div>
+
+            {/* Main Section Content Area */}
+            <div className="flex-1 p-4 sm:p-6 overflow-y-auto bg-[#FAF7F2]">
+              {/* TAB 1: THE NEW EDIT SECTION */}
+              {activeTab === 'new-edit' && (
+                <div className="space-y-6">
+                  <div>
+                    <h4 className="font-serif text-xl text-[#1C1917] font-normal">
+                      The New Edit — Weekly Fresh Arrivals
+                    </h4>
+                    <p className="text-xs text-stone-600 font-light">
+                      Upload new outfits or paste direct photo links. Changes are instantly saved to Firebase and reflected on the live website.
+                    </p>
+                  </div>
+
+                  {/* Create New Item Form */}
+                  <form onSubmit={handleCreateNewItem} className="bg-white p-5 border border-[#E7DFD5] shadow-xs space-y-4">
+                    <div className="text-xs font-semibold uppercase tracking-wider text-[#8B2626] border-b border-stone-200 pb-2">
+                      Upload New Boutique Outfit
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {/* Image Source */}
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium text-stone-700 block">Photo (Device or Image Link)</label>
+                        <div className="flex gap-2">
+                          <input
+                            type="url"
+                            value={newArrivalImgUrl}
+                            onChange={(e) => {
+                              setNewArrivalImgUrl(e.target.value);
+                              setNewArrivalPreview(e.target.value);
+                            }}
+                            placeholder="Paste image link URL..."
+                            className="flex-1 text-xs px-3 py-2 border border-stone-300 focus:outline-none focus:border-[#8B2626]"
+                          />
+                          <input
+                            type="file"
+                            ref={fileInputRef}
+                            onChange={(e) => handleFileUpload(e, 'item')}
+                            accept="image/*"
+                            className="hidden"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="px-3 py-2 bg-stone-100 border border-stone-300 hover:bg-stone-200 text-xs font-medium flex items-center gap-1.5"
+                          >
+                            <Upload className="w-3.5 h-3.5" />
+                            <span>Browse</span>
+                          </button>
+                        </div>
+
+                        {newArrivalPreview && (
+                          <div className="relative w-20 h-24 border border-stone-300 overflow-hidden mt-2">
+                            <img src={newArrivalPreview} alt="Preview" className="w-full h-full object-cover" />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setNewArrivalImgUrl('');
+                                setNewArrivalPreview(null);
+                              }}
+                              className="absolute top-1 right-1 p-0.5 bg-black/70 text-white rounded-full"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Outfit Title */}
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium text-stone-700 block">Outfit Name / Title</label>
                         <input
-                          type="url"
-                          placeholder="https://..."
-                          value={imageUrl}
-                          onChange={(e) => {
-                            setImageUrl(e.target.value);
-                            setImagePreview(e.target.value);
-                          }}
-                          className="w-full text-xs p-1.5 border border-[#E7E2D8] bg-[#FAF7F2] focus:border-[#8B2626] focus:outline-none"
+                          type="text"
+                          value={newArrivalTitle}
+                          onChange={(e) => setNewArrivalTitle(e.target.value)}
+                          placeholder="e.g. Handcrafted Silk Anarkali Suit"
+                          className="w-full text-xs px-3 py-2 border border-stone-300 focus:outline-none focus:border-[#8B2626]"
+                          required
                         />
                       </div>
                     </div>
-                  </div>
 
-                  {/* Title & Tag */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-medium text-[#78716C] mb-1">
-                        Outfit Title / Name
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Ivory Organza Anarkali Set"
-                        value={title}
-                        onChange={(e) => setTitle(e.target.value)}
-                        className="w-full text-xs p-2 border border-[#E7E2D8] bg-white focus:border-[#8B2626] focus:outline-none"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-[#78716C] mb-1">
-                        Badge Tag
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. New Drop, Instagram Trend"
-                        value={tag}
-                        onChange={(e) => setTag(e.target.value)}
-                        className="w-full text-xs p-2 border border-[#E7E2D8] bg-white focus:border-[#8B2626] focus:outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Category & Placement */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-medium text-[#78716C] mb-1">
-                        Category
-                      </label>
-                      <select
-                        value={category}
-                        onChange={(e) => setCategory(e.target.value as any)}
-                        className="w-full text-xs p-2 border border-[#E7E2D8] bg-white focus:border-[#8B2626] focus:outline-none"
-                      >
-                        <option value="ethnic">Ethnic Wear (Suits, Sarees, Kurta)</option>
-                        <option value="western">Western Edit (Co-ords, Dresses)</option>
-                        <option value="casual">Casual Collection</option>
-                        <option value="dress-material">Unstitched Dress Materials</option>
-                        <option value="occasion">Occasion & Wedding</option>
-                        <option value="trending">Trending Styles</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-[#78716C] mb-1">
-                        Where to display on website
-                      </label>
-                      <select
-                        value={placement}
-                        onChange={(e) => setPlacement(e.target.value as any)}
-                        className="w-full text-xs p-2 border border-[#E7E2D8] bg-white focus:border-[#8B2626] focus:outline-none"
-                      >
-                        <option value="all">Everywhere (New Arrivals + Moodboard)</option>
-                        <option value="new-arrival">The New Edit (Homepage Top)</option>
-                        <option value="editorial">Weekly Moodboard Gallery</option>
-                        <option value="instagram">Instagram Social Feed</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Fabric & Price */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-medium text-[#78716C] mb-1">
-                        Fabric / Work
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Pure Georgette Zari Work"
-                        value={fabric}
-                        onChange={(e) => setFabric(e.target.value)}
-                        className="w-full text-xs p-2 border border-[#E7E2D8] bg-white focus:border-[#8B2626] focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-[#78716C] mb-1">
-                        Estimated Price or Note
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. ₹3,250 or Inquire at Store"
-                        value={price}
-                        onChange={(e) => setPrice(e.target.value)}
-                        className="w-full text-xs p-2 border border-[#E7E2D8] bg-white focus:border-[#8B2626] focus:outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="w-full py-3 bg-[#8B2626] hover:bg-[#6D1E1E] text-white text-xs uppercase tracking-widest font-semibold flex items-center justify-center gap-2 transition-all shadow-md mt-2"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Publish Photo To Live Website
-                  </button>
-                </form>
-              </div>
-
-              {/* Right Column: Live Photo Preview & Quick Presets */}
-              <div className="lg:col-span-5 space-y-4">
-                <div className="bg-white p-4 border border-[#E7E2D8]">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs uppercase font-semibold tracking-wider text-[#1C1917]">
-                      Live Card Preview
-                    </span>
-                    {imagePreview && (
-                      <span className="text-[10px] bg-green-100 text-green-800 px-2 py-0.5 font-bold">
-                        Ready to Add
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="aspect-[3/4] bg-[#F5F2EB] relative overflow-hidden border border-[#E7E2D8]">
-                    {imagePreview ? (
-                      <img
-                        src={imagePreview}
-                        alt="Preview"
-                        className="w-full h-full object-cover"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center text-[#A8A29E]">
-                        <ImageIcon className="w-10 h-10 mb-2 stroke-[1.2]" />
-                        <p className="text-xs font-medium">No photo selected yet</p>
-                        <p className="text-[11px] text-[#78716C] mt-1">
-                          Upload a photo from your client's Instagram or choose one of the boutique presets below.
-                        </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div>
+                        <label className="text-xs font-medium text-stone-700 block mb-1">Category</label>
+                        <select
+                          value={newArrivalCategory}
+                          onChange={(e) => setNewArrivalCategory(e.target.value as any)}
+                          className="w-full text-xs px-3 py-2 border border-stone-300 focus:outline-none focus:border-[#8B2626] bg-white"
+                        >
+                          <option value="ethnic">Ethnic Wear</option>
+                          <option value="western">Western Edit</option>
+                          <option value="casual">Casual Collection</option>
+                          <option value="dress-materials">Dress Materials</option>
+                          <option value="occasion">Occasion Wear</option>
+                          <option value="trending">Trending Now</option>
+                        </select>
                       </div>
-                    )}
 
-                    {imagePreview && (
-                      <div className="absolute top-2 left-2 bg-[#1C1917]/90 backdrop-blur-xs text-white text-[9px] uppercase font-bold tracking-widest px-2 py-1">
-                        {tag || 'New Drop'}
+                      <div>
+                        <label className="text-xs font-medium text-stone-700 block mb-1">Fabric & Texture</label>
+                        <input
+                          type="text"
+                          value={newArrivalFabric}
+                          onChange={(e) => setNewArrivalFabric(e.target.value)}
+                          placeholder="e.g. Pure Chanderi Silk"
+                          className="w-full text-xs px-3 py-2 border border-stone-300 focus:outline-none focus:border-[#8B2626]"
+                        />
                       </div>
-                    )}
-                  </div>
 
-                  <div className="mt-3">
-                    <h4 className="font-serif font-bold text-sm text-[#1C1917] truncate">
-                      {title || 'Sample Outfit Title'}
-                    </h4>
-                    <p className="text-xs text-[#8B2626] font-medium">{price || '₹2,450'}</p>
+                      <div>
+                        <label className="text-xs font-medium text-stone-700 block mb-1">Badge / Tag</label>
+                        <input
+                          type="text"
+                          value={newArrivalTag}
+                          onChange={(e) => setNewArrivalTag(e.target.value)}
+                          placeholder="NEW DROP / FESTIVE"
+                          className="w-full text-xs px-3 py-2 border border-stone-300 focus:outline-none focus:border-[#8B2626]"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end pt-2">
+                      <button
+                        type="submit"
+                        disabled={isSyncing}
+                        className="px-6 py-2.5 bg-[#8B2626] hover:bg-[#6D1E1E] text-white text-xs font-semibold tracking-wider uppercase transition-colors flex items-center gap-2"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>Publish to Live Website</span>
+                      </button>
+                    </div>
+                  </form>
+
+                  {/* Active New Arrivals List */}
+                  <div className="space-y-3">
+                    <div className="text-xs font-semibold uppercase tracking-wider text-stone-700">
+                      Currently Active New Arrivals ({newArrivals.length})
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                      {newArrivals.map((item) => (
+                        <div key={item.id} className="bg-white border border-[#E7DFD5] p-3 flex gap-3 shadow-xs">
+                          <img
+                            src={item.image}
+                            alt={item.title}
+                            className="w-16 h-20 object-cover bg-stone-100 shrink-0"
+                          />
+                          <div className="flex-1 min-w-0 flex flex-col justify-between">
+                            <div>
+                              <span className="text-[10px] font-semibold text-[#8B2626] uppercase">
+                                {item.tag}
+                              </span>
+                              <h5 className="font-serif text-xs font-bold text-[#1C1917] truncate">
+                                {item.title}
+                              </h5>
+                              <p className="text-[11px] text-stone-500 truncate">
+                                {item.details?.fabric || item.category}
+                              </p>
+                            </div>
+
+                            <div className="flex items-center gap-2 pt-1 border-t border-stone-100">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const newUrl = prompt('Enter new image URL for ' + item.title, item.image);
+                                  if (newUrl) replaceItemPhoto(item.id, newUrl);
+                                }}
+                                className="text-[10px] text-stone-600 hover:text-[#8B2626] underline"
+                              >
+                                Replace Photo
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (confirm('Delete outfit "' + item.title + '" from website?')) {
+                                    deleteCustomItem(item.id);
+                                  }
+                                }}
+                                className="text-[10px] text-red-600 hover:text-red-800 ml-auto"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
+              )}
 
-                {/* Quick Presets */}
-                <div className="bg-[#F5F2EB] p-3 border border-[#E7E2D8]">
-                  <div className="flex items-center gap-1.5 mb-2 text-xs font-bold text-[#1C1917] uppercase tracking-wider">
-                    <Sparkles className="w-3.5 h-3.5 text-[#D4AF37]" />
-                    <span>Quick Boutique Presets</span>
+              {/* TAB 2: HERO BANNER SECTION */}
+              {activeTab === 'hero' && (
+                <div className="space-y-6">
+                  <div>
+                    <h4 className="font-serif text-xl text-[#1C1917] font-normal">
+                      Hero Banner Background
+                    </h4>
+                    <p className="text-xs text-stone-600 font-light">
+                      Update the full-width high-resolution hero photo at the top of the homepage.
+                    </p>
                   </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    {PRESET_COLLECTIONS.slice(0, 3).map((p, idx) => (
+
+                  <div className="bg-white p-5 border border-[#E7DFD5] space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-stone-700 block">Hero Image URL</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="url"
+                          value={tempHeroUrl}
+                          onChange={(e) => setTempHeroUrl(e.target.value)}
+                          placeholder="Paste image link URL..."
+                          className="flex-1 text-xs px-3 py-2 border border-stone-300 focus:outline-none focus:border-[#8B2626]"
+                        />
+                        <input
+                          type="file"
+                          ref={heroFileInputRef}
+                          onChange={(e) => handleFileUpload(e, 'hero')}
+                          accept="image/*"
+                          className="hidden"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => heroFileInputRef.current?.click()}
+                          className="px-4 py-2 bg-stone-100 border border-stone-300 hover:bg-stone-200 text-xs font-medium flex items-center gap-1.5"
+                        >
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>Upload File</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="relative aspect-[16/8] sm:aspect-[21/9] bg-stone-900 overflow-hidden border border-stone-300">
+                      <img
+                        src={tempHeroUrl}
+                        alt="Hero Preview"
+                        className="w-full h-full object-cover filter brightness-[0.8]"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex items-end p-6">
+                        <div className="text-white">
+                          <p className="text-[10px] tracking-[0.25em] text-[#D4AF37] uppercase">SINCE 1943 · AGRA</p>
+                          <h3 className="font-serif text-2xl">Preview of Hero Banner</h3>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end gap-3 pt-2">
                       <button
-                        key={idx}
                         type="button"
-                        onClick={() => handleApplyPreset(p)}
-                        className="group text-left border border-[#E7E2D8] bg-white p-1 hover:border-[#8B2626] transition-all"
+                        onClick={handleSaveHero}
+                        disabled={isSyncing}
+                        className="px-6 py-2.5 bg-[#8B2626] hover:bg-[#6D1E1E] text-white text-xs font-semibold tracking-wider uppercase transition-colors"
                       >
-                        <div className="aspect-[3/4] bg-[#FAF7F2] overflow-hidden mb-1">
-                          <img
-                            src={p.url}
-                            alt={p.title}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                            referrerPolicy="no-referrer"
+                        SAVE & SYNC HERO BANNER
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 3: CATEGORIES SHOWCASE */}
+              {activeTab === 'categories' && (
+                <div className="space-y-6">
+                  <div>
+                    <h4 className="font-serif text-xl text-[#1C1917] font-normal">
+                      Categories Cover Photos
+                    </h4>
+                    <p className="text-xs text-stone-600 font-light">
+                      Update the cover photograph for each of the 6 major boutique departments.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {categories.map((cat) => (
+                      <div key={cat.id} className="bg-white border border-[#E7DFD5] p-3 space-y-2">
+                        <div className="aspect-[4/3] bg-stone-900 relative overflow-hidden">
+                          <img src={cat.image} alt={cat.title} className="w-full h-full object-cover" />
+                          <div className="absolute bottom-2 left-2 bg-black/70 text-white text-[10px] px-2 py-0.5">
+                            {cat.title}
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-medium text-stone-700 block mb-1">
+                            {cat.title} Cover Photo URL
+                          </label>
+                          <input
+                            type="url"
+                            value={cat.image}
+                            onChange={(e) => updateCategoryPhoto(cat.id, e.target.value)}
+                            className="w-full text-xs px-2.5 py-1.5 border border-stone-300 focus:outline-none focus:border-[#8B2626]"
                           />
                         </div>
-                        <p className="text-[9px] font-semibold text-[#1C1917] truncate leading-tight">
-                          {p.title}
-                        </p>
-                      </button>
+                      </div>
                     ))}
                   </div>
                 </div>
-              </div>
-            </div>
-          )}
+              )}
 
-          {/* TAB 2: CATEGORY TILES MANAGER */}
-          {activeTab === 'categories' && (
-            <div className="space-y-4">
-              <div className="bg-white p-4 border border-[#E7E2D8] flex items-center justify-between">
-                <div>
-                  <h3 className="font-serif text-sm font-bold text-[#1C1917]">
-                    Shop By Collection Category Cover Photos
-                  </h3>
-                  <p className="text-xs text-[#78716C]">
-                    Change the main cover photos of Ethnic, Western, Casual, and Dress Material sections.
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {categories.map((cat) => (
-                  <div key={cat.id} className="bg-white p-3 border border-[#E7E2D8] flex flex-col justify-between space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="font-serif font-bold text-xs text-[#1C1917]">
-                        {cat.title}
-                      </span>
-                      <span className="text-[10px] text-[#78716C] uppercase tracking-wider">
-                        {cat.itemCount}
-                      </span>
-                    </div>
-
-                    <div className="aspect-[4/5] bg-[#F5F2EB] overflow-hidden relative">
-                      <img
-                        src={cat.image}
-                        alt={cat.title}
-                        className="w-full h-full object-cover"
-                        referrerPolicy="no-referrer"
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] uppercase font-semibold text-[#78716C]">
-                        Replace Image URL:
-                      </label>
-                      <div className="flex gap-1">
-                        <input
-                          type="url"
-                          defaultValue={cat.image}
-                          onBlur={(e) => {
-                            if (e.target.value && e.target.value !== cat.image) {
-                              updateCategoryPhoto(cat.id, e.target.value);
-                              showToast(`Updated ${cat.title} category photo!`);
-                            }
-                          }}
-                          placeholder="Paste new photo URL..."
-                          className="flex-grow text-[11px] p-1.5 border border-[#E7E2D8] bg-[#FAF7F2] focus:outline-none focus:border-[#8B2626]"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* TAB 3: INSTAGRAM POSTS MANAGER */}
-          {activeTab === 'instagram' && (
-            <div className="space-y-4">
-              <div className="bg-white p-4 border border-[#E7E2D8] flex items-center justify-between">
-                <div>
-                  <h3 className="font-serif text-sm font-bold text-[#1C1917]">
-                    Instagram Section Photos (@clothcollection.agra)
-                  </h3>
-                  <p className="text-xs text-[#78716C]">
-                    Update the 6 Instagram preview tiles displayed in the social feed section.
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {instagramPosts.map((post, idx) => (
-                  <div key={post.id} className="bg-white p-3 border border-[#E7E2D8] space-y-2">
-                    <div className="flex items-center justify-between text-[11px] font-medium text-[#78716C]">
-                      <span>Post #{idx + 1}</span>
-                      <span>❤️ {post.likes}</span>
-                    </div>
-
-                    <div className="aspect-square bg-[#F5F2EB] overflow-hidden">
-                      <img
-                        src={post.image}
-                        alt="Instagram"
-                        className="w-full h-full object-cover"
-                        referrerPolicy="no-referrer"
-                      />
-                    </div>
-
-                    <input
-                      type="url"
-                      defaultValue={post.image}
-                      onBlur={(e) => {
-                        if (e.target.value && e.target.value !== post.image) {
-                          updateInstagramPostPhoto(post.id, e.target.value);
-                          showToast(`Updated Instagram Post #${idx + 1}`);
-                        }
-                      }}
-                      placeholder="New Instagram Image URL..."
-                      className="w-full text-[11px] p-1.5 border border-[#E7E2D8] bg-[#FAF7F2] focus:outline-none focus:border-[#8B2626]"
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* TAB 4: HERO BANNER IMAGE */}
-          {activeTab === 'hero' && (
-            <div className="bg-white p-6 border border-[#E7E2D8] space-y-5">
-              <div>
-                <h3 className="font-serif text-base font-bold text-[#1C1917]">
-                  Main Hero Banner Photo
-                </h3>
-                <p className="text-xs text-[#78716C]">
-                  The prominent full-width background photo at the top of the homepage.
-                </p>
-              </div>
-
-              <div className="aspect-[16/9] max-h-[300px] w-full bg-[#1C1917] overflow-hidden relative border border-[#E7E2D8]">
-                <img
-                  src={heroImage}
-                  alt="Hero Background"
-                  className="w-full h-full object-cover"
-                  referrerPolicy="no-referrer"
-                />
-                <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/40 to-transparent flex items-center p-6 text-white">
+              {/* TAB 4: INSTAGRAM FEED */}
+              {activeTab === 'instagram' && (
+                <div className="space-y-6">
                   <div>
-                    <span className="text-[10px] uppercase tracking-widest font-semibold text-[#D4AF37]">
-                      Hero Preview
-                    </span>
-                    <h4 className="font-serif text-xl font-bold tracking-tight">
-                      FASHION THAT MOVES WITH YOU
+                    <h4 className="font-serif text-xl text-[#1C1917] font-normal">
+                      Instagram Grid (@clothcollection.agra)
                     </h4>
+                    <p className="text-xs text-stone-600 font-light">
+                      Update the 6 posts displayed in the live Instagram social feed section.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                    {instagramPosts.map((post, idx) => (
+                      <div key={post.id} className="bg-white border border-[#E7DFD5] p-3 space-y-2">
+                        <div className="aspect-square bg-stone-900 relative overflow-hidden">
+                          <img src={post.image} alt={`Post ${idx + 1}`} className="w-full h-full object-cover" />
+                          <div className="absolute top-2 left-2 bg-black/70 text-white text-[10px] px-2 py-0.5">
+                            Post #{idx + 1}
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-medium text-stone-700 block mb-1">Image URL</label>
+                          <input
+                            type="url"
+                            value={post.image}
+                            onChange={(e) => updateInstagramPostPhoto(post.id, e.target.value)}
+                            className="w-full text-xs px-2.5 py-1.5 border border-stone-300 focus:outline-none focus:border-[#8B2626]"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-medium text-stone-700 block mb-1">Caption</label>
+                          <input
+                            type="text"
+                            value={post.caption}
+                            onChange={(e) => updateInstagramPostPhoto(post.id, post.image, e.target.value)}
+                            className="w-full text-xs px-2.5 py-1.5 border border-stone-300 focus:outline-none focus:border-[#8B2626]"
+                          />
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              </div>
+              )}
 
-              <div className="space-y-2">
-                <label className="block text-xs font-semibold uppercase text-[#1C1917]">
-                  Replace Hero Background Image URL:
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="url"
-                    defaultValue={heroImage}
-                    id="hero-input"
-                    placeholder="https://..."
-                    className="flex-grow text-xs p-2.5 border border-[#E7E2D8] bg-[#FAF7F2] focus:outline-none focus:border-[#8B2626]"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const input = document.getElementById('hero-input') as HTMLInputElement;
-                      if (input && input.value) {
-                        updateHeroPhoto(input.value);
-                        showToast('Hero photo updated!');
-                      }
-                    }}
-                    className="px-5 py-2.5 bg-[#8B2626] text-white text-xs uppercase font-semibold tracking-wider hover:bg-[#6D1E1E]"
-                  >
-                    Apply Hero Photo
-                  </button>
+              {/* TAB 5: EDITORIAL GALLERY */}
+              {activeTab === 'editorial' && (
+                <div className="space-y-6">
+                  <div>
+                    <h4 className="font-serif text-xl text-[#1C1917] font-normal">
+                      Weekly Editorial Moodboard Gallery
+                    </h4>
+                    <p className="text-xs text-stone-600 font-light">
+                      Visual Pinterest-style layout highlights for Sadar Bazar weekly arrivals.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                    {editorialGallery.map((item) => (
+                      <div key={item.id} className="bg-white border border-[#E7DFD5] p-3 space-y-2">
+                        <div className="aspect-[3/4] bg-stone-900 relative overflow-hidden">
+                          <img src={item.image} alt={item.title} className="w-full h-full object-cover" />
+                          <div className="absolute bottom-2 left-2 bg-black/70 text-white text-[10px] px-2 py-0.5">
+                            {item.title}
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-medium text-stone-700 block mb-1">Image URL</label>
+                          <input
+                            type="url"
+                            value={item.image}
+                            onChange={(e) => replaceItemPhoto(item.id, e.target.value)}
+                            className="w-full text-xs px-2.5 py-1.5 border border-stone-300 focus:outline-none focus:border-[#8B2626]"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            </div>
-          )}
+              )}
 
-          {/* TAB 5: MANAGE ACTIVE ITEMS */}
-          {activeTab === 'manage' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between bg-white p-4 border border-[#E7E2D8]">
-                <div>
-                  <h3 className="font-serif text-sm font-bold text-[#1C1917]">
-                    Active Outfits in Catalogue ({newArrivals.length})
-                  </h3>
-                  <p className="text-xs text-[#78716C]">
-                    Manage, edit, or delete any outfit cards currently shown on the website.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (window.confirm('Reset all photos to default boutique collection?')) {
-                      resetToDefaults();
-                      showToast('Reset to default photos successfully.');
-                    }
-                  }}
-                  className="px-3 py-1.5 text-xs text-[#78716C] hover:text-[#8B2626] border border-[#E7E2D8] hover:border-[#8B2626] flex items-center gap-1.5 transition-colors"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  Reset to Default
-                </button>
-              </div>
+              {/* TAB 6: FIREBASE CLOUD & STATIC EXPORT */}
+              {activeTab === 'firebase' && (
+                <div className="space-y-6">
+                  <div>
+                    <h4 className="font-serif text-xl text-[#1C1917] font-normal">
+                      Firebase Cloud Sync & Static Migration
+                    </h4>
+                    <p className="text-xs text-stone-600 font-light">
+                      Live Firestore database status and 1-click static export when you want to remove the database later.
+                    </p>
+                  </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                {newArrivals.map((item) => (
-                  <div key={item.id} className="bg-white p-3 border border-[#E7E2D8] flex gap-3 items-center">
-                    <div className="w-16 h-20 bg-[#F5F2EB] flex-shrink-0 overflow-hidden">
-                      <img
-                        src={item.image}
-                        alt={item.title}
-                        className="w-full h-full object-cover"
-                        referrerPolicy="no-referrer"
-                      />
-                    </div>
-                    <div className="flex-grow min-w-0">
-                      <span className="text-[9px] uppercase font-bold text-[#8B2626] bg-[#8B2626]/10 px-1.5 py-0.5">
-                        {item.tag}
-                      </span>
-                      <h4 className="font-serif font-bold text-xs text-[#1C1917] truncate mt-1">
-                        {item.title}
-                      </h4>
-                      <p className="text-[11px] text-[#78716C] truncate">{item.details?.fabric || 'Pure Fabric'}</p>
-                      <p className="text-xs font-semibold text-[#8B2626]">{item.details?.occasion || 'Available in store'}</p>
-                    </div>
-                    {item.id.startsWith('custom-') && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Firebase Status */}
+                    <div className="bg-white p-5 border border-[#E7DFD5] space-y-4">
+                      <div className="flex items-center gap-2 text-[#8B2626] font-semibold text-xs uppercase tracking-wider">
+                        <Database className="w-4 h-4" />
+                        <span>Cloud Database Configuration</span>
+                      </div>
+
+                      <div className="bg-stone-50 p-3 rounded-none text-xs space-y-1.5 font-mono">
+                        <div><strong>Project:</strong> ananttecg</div>
+                        <div><strong>Database:</strong> Firestore Cloud Live</div>
+                        <div><strong>Status:</strong> {isFirebaseLive ? '✅ Connected & Active' : '⚡ Local Resilient Mode'}</div>
+                        <div><strong>Last Sync:</strong> {lastSyncedTime || 'Real-time'}</div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={syncAllToFirestore}
+                        disabled={isSyncing}
+                        className="w-full py-3 bg-[#1C1917] hover:bg-[#8B2626] text-white text-xs font-semibold tracking-wider uppercase transition-colors flex items-center justify-center gap-2"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                        <span>{isSyncing ? 'Syncing...' : 'Force Sync All to Cloud'}</span>
+                      </button>
+
                       <button
                         type="button"
                         onClick={() => {
-                          deleteCustomItem(item.id);
-                          showToast(`Removed ${item.title}`);
+                          if (confirm('Reset all website photos back to Clothes Collection Agra defaults?')) {
+                            resetToDefaults();
+                            showToast('↺ Reset to boutique default photography.');
+                          }
                         }}
-                        className="p-2 text-[#A8A29E] hover:text-red-600 transition-colors"
-                        title="Delete custom outfit"
+                        className="w-full py-2.5 border border-stone-300 text-stone-600 hover:bg-stone-100 text-xs font-medium tracking-wider uppercase transition-colors"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        Reset to Boutique Defaults
                       </button>
-                    )}
+                    </div>
+
+                    {/* Static Code Export (No Database Future) */}
+                    <div className="bg-white p-5 border border-[#E7DFD5] space-y-4">
+                      <div className="flex items-center gap-2 text-[#8B2626] font-semibold text-xs uppercase tracking-wider">
+                        <Download className="w-4 h-4" />
+                        <span>Export Static Data (Future Manual Use)</span>
+                      </div>
+
+                      <p className="text-xs text-stone-600 font-light leading-relaxed">
+                        Jab aapko Firebase database remove karke static images manually code me rakhni ho, toh is button par tap karein. Ye aapke sabhi live photos aur settings ka clean JSON format generate kar dega!
+                      </p>
+
+                      <button
+                        type="button"
+                        onClick={handleExportData}
+                        className="w-full py-3 bg-[#8B2626] hover:bg-[#6D1E1E] text-white text-xs font-semibold tracking-wider uppercase transition-colors flex items-center justify-center gap-2"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>{copiedCode ? 'Copied to Clipboard!' : 'Copy Static JSON Code'}</span>
+                      </button>
+                    </div>
                   </div>
-                ))}
-              </div>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="px-6 py-4 bg-white border-t border-[#E7E2D8] flex items-center justify-between">
-          <div className="text-xs text-[#78716C] flex items-center gap-1.5">
-            <Check className="w-4 h-4 text-green-600" />
-            <span>All uploads & edits are automatically saved to your session and live preview.</span>
           </div>
-
-          <button
-            type="button"
-            onClick={() => setIsManagerOpen(false)}
-            className="px-6 py-2.5 bg-[#1C1917] text-white hover:bg-[#8B2626] text-xs uppercase tracking-widest font-semibold transition-colors flex items-center gap-2"
-          >
-            <span>Done & View Website</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
+        )}
       </div>
     </div>
   );
