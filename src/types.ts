@@ -3,8 +3,12 @@ export interface FashionItem {
   title: string;
   category: 'tops' | 'jeans' | 'kurtis' | 'bottoms' | 'ethnic' | 'western' | 'casual' | 'dress-materials' | 'occasion' | 'trending';
   categoryLabel: string;
-  tag: string; // 'NEW ARRIVAL' | 'EVERYDAY EDIT' | 'ETHNIC EDIT' | 'WEEKEND STYLE' | 'OCCASION EDIT' | 'JUST IN' | 'TRENDING' | 'NEW SEASON' | 'MOST LOVED' | 'INSTAGRAM IMPORT' | 'BESTSELLER'
+  tag: string; // 'NEW ARRIVAL' | 'EVERYDAY EDIT' | 'ETHNIC EDIT' | 'WEEKEND STYLE' | 'OCCASION EDIT' | 'JUST IN' | 'TRENDING' | 'NEW SEASON' | 'MOST LOVED' | 'INSTAGRAM IMPORT' | 'BESTSELLER' | 'REEL DROP'
   image: string;
+  mediaType?: 'image' | 'reel' | 'video';
+  videoUrl?: string;
+  instagramReelId?: string;
+  embedUrl?: string;
   description: string;
   details: {
     fabric: string;
@@ -49,6 +53,10 @@ export interface Testimonial {
 export interface InstagramPost {
   id: string;
   image: string;
+  mediaType?: 'image' | 'reel' | 'video';
+  videoUrl?: string;
+  instagramReelId?: string;
+  embedUrl?: string;
   likes: number;
   comments: number;
   caption: string;
@@ -58,7 +66,11 @@ export interface InstagramPost {
 export interface MediaLibraryItem {
   id: string;
   url: string;
-  source: 'instagram' | 'upload' | 'url' | 'preset';
+  mediaType?: 'image' | 'reel' | 'video';
+  videoUrl?: string;
+  instagramReelId?: string;
+  embedUrl?: string;
+  source: 'instagram' | 'upload' | 'url' | 'preset' | 'reel';
   title: string;
   instagramUrl?: string;
   importedAt: string;
@@ -68,7 +80,7 @@ export interface MediaLibraryItem {
 export type WebsiteSlot =
   | { type: 'hero' }
   | { type: 'category'; categoryId: string; categoryTitle?: string }
-  | { type: 'newArrival'; category: 'tops' | 'jeans' | 'kurtis' | 'bottoms'; title?: string; fabric?: string; tag?: string }
+  | { type: 'newArrival'; category: 'tops' | 'jeans' | 'kurtis' | 'bottoms'; title?: string; fabric?: string; tag?: string; mediaType?: 'image' | 'reel' | 'video'; videoUrl?: string; instagramReelId?: string; embedUrl?: string }
   | { type: 'replaceNewArrival'; itemId: string }
-  | { type: 'instagramPost'; postId: string; caption?: string }
-  | { type: 'editorial'; itemId?: string };
+  | { type: 'instagramPost'; postId: string; caption?: string; mediaType?: 'image' | 'reel' | 'video'; videoUrl?: string; embedUrl?: string }
+  | { type: 'editorial'; itemId?: string; mediaType?: 'image' | 'reel' | 'video'; videoUrl?: string; embedUrl?: string };

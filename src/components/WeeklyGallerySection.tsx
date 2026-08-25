@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { Instagram, ArrowUpRight, MessageCircle, Sparkles, Heart } from 'lucide-react';
+import { Instagram, ArrowUpRight, MessageCircle, Sparkles, Heart, Play } from 'lucide-react';
 import { STORE_INFO } from '../data/fashionData';
 import { FashionItem } from '../types';
 import { useFashion } from '../context/FashionContext';
@@ -68,8 +68,11 @@ export const WeeklyGallerySection: React.FC<WeeklyGallerySectionProps> = ({ onSe
                 className="w-full h-full object-cover object-center transition-transform duration-700 group-hover:scale-105"
                 referrerPolicy="no-referrer"
               />
-              <div className="absolute top-4 left-4 bg-[#1C1917]/90 text-white text-[10px] tracking-[0.2em] font-semibold px-3 py-1 uppercase">
-                {firstItem.tag}
+              <div className="absolute top-4 left-4 flex items-center gap-1.5 bg-[#1C1917]/90 text-white text-[10px] tracking-[0.2em] font-semibold px-3 py-1 uppercase">
+                {(firstItem.mediaType === 'reel' || firstItem.mediaType === 'video' || firstItem.videoUrl || firstItem.embedUrl || firstItem.tag?.includes('REEL')) && (
+                  <Play className="w-2.5 h-2.5 fill-[#D4AF37] text-[#D4AF37]" />
+                )}
+                <span>{firstItem.tag}</span>
               </div>
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-90 group-hover:opacity-100 transition-opacity p-6 flex flex-col justify-end text-white">
                 <span className="text-xs text-[#C5A880] tracking-widest uppercase font-medium">
@@ -107,8 +110,11 @@ export const WeeklyGallerySection: React.FC<WeeklyGallerySectionProps> = ({ onSe
                 />
 
                 {/* Tag */}
-                <div className="absolute top-3 left-3 bg-[#FAF7F2]/95 text-[#1C1917] text-[10px] tracking-[0.2em] font-semibold px-2.5 py-1 uppercase border border-[#E7DFD5]">
-                  {item.tag}
+                <div className="absolute top-3 left-3 flex items-center gap-1 bg-[#FAF7F2]/95 text-[#1C1917] text-[10px] tracking-[0.2em] font-semibold px-2 py-0.5 uppercase border border-[#E7DFD5]">
+                  {(item.mediaType === 'reel' || item.mediaType === 'video' || item.videoUrl || item.embedUrl || item.tag?.includes('REEL')) && (
+                    <Play className="w-2.5 h-2.5 fill-[#8B2626] text-[#8B2626]" />
+                  )}
+                  <span>{item.tag}</span>
                 </div>
 
                 {/* Overlay on hover */}

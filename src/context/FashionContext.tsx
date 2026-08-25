@@ -313,7 +313,22 @@ export const FashionProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
 
     if (slot.type === 'instagramPost') {
-      await updateInstagramPostPhoto(slot.postId, imageUrl, slot.caption || metadata?.caption);
+      const updated = instagramPosts.map((post) => {
+        if (post.id === slot.postId) {
+          return {
+            ...post,
+            image: imageUrl,
+            caption: slot.caption || metadata?.caption || post.caption,
+            mediaType: slot.mediaType || metadata?.mediaType || post.mediaType || (metadata?.isReel ? 'reel' : 'image'),
+            videoUrl: slot.videoUrl || metadata?.videoUrl || post.videoUrl,
+            embedUrl: slot.embedUrl || metadata?.embedUrl || post.embedUrl,
+          };
+        }
+        return post;
+      });
+      setInstagramPosts(updated);
+      localStorage.setItem(STORAGE_KEY_IG, JSON.stringify(updated));
+      await saveStateToFirestore({ instagramPosts: updated });
       return;
     }
 
@@ -333,11 +348,17 @@ export const FashionProvider: React.FC<{ children: ReactNode }> = ({ children })
       };
 
       const targetCategory = slot.category;
+      const isReelMedia = slot.mediaType === 'reel' || metadata?.mediaType === 'reel' || metadata?.isReel;
+
       await addCustomItem(
         {
           title: slot.title || metadata?.title || `${categoryLabels[targetCategory]} Boutique Edit`,
-          tag: slot.tag || metadata?.tag || 'INSTAGRAM DROP',
+          tag: slot.tag || metadata?.tag || (isReelMedia ? 'REEL DROP' : 'INSTAGRAM DROP'),
           image: imageUrl,
+          mediaType: slot.mediaType || metadata?.mediaType || (isReelMedia ? 'reel' : 'image'),
+          videoUrl: slot.videoUrl || metadata?.videoUrl,
+          instagramReelId: slot.instagramReelId || metadata?.instagramReelId,
+          embedUrl: slot.embedUrl || metadata?.embedUrl,
           category: targetCategory,
           categoryLabel: categoryLabels[targetCategory],
           description: `Authentic boutique outfit in ${slot.fabric || metadata?.fabric || 'Pure Fabric'}. Available at Clothes Collection, Sadar Bazar, Agra.`,
@@ -364,6 +385,9 @@ export const FashionProvider: React.FC<{ children: ReactNode }> = ({ children })
             title: metadata?.title || 'Editorial Aesthetic Highlight',
             tag: metadata?.tag || 'EDITORIAL LOOK',
             image: imageUrl,
+            mediaType: slot.mediaType || metadata?.mediaType,
+            videoUrl: slot.videoUrl || metadata?.videoUrl,
+            embedUrl: slot.embedUrl || metadata?.embedUrl,
             category: 'tops',
             categoryLabel: 'Signature Edit',
             description: 'Curated boutique showcase at Sadar Bazar Agra.',

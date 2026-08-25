@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { ArrowUpRight, Sparkles, MessageCircle, Eye } from 'lucide-react';
+import { ArrowUpRight, Sparkles, MessageCircle, Eye, Play } from 'lucide-react';
 import { STORE_INFO } from '../data/fashionData';
 import { FashionItem } from '../types';
 import { useFashion } from '../context/FashionContext';
@@ -77,8 +77,11 @@ export const NewEditSection: React.FC<NewEditSectionProps> = ({
                 />
 
                 {/* Tag Badge */}
-                <div className="absolute top-3 left-3 bg-[#FAF7F2]/95 backdrop-blur-sm text-[#1C1917] text-[10px] sm:text-[11px] font-semibold tracking-[0.2em] uppercase px-3 py-1 border border-[#E7DFD5] shadow-xs">
-                  {item.tag}
+                <div className="absolute top-3 left-3 flex items-center gap-1.5 bg-[#FAF7F2]/95 backdrop-blur-sm text-[#1C1917] text-[10px] sm:text-[11px] font-semibold tracking-[0.2em] uppercase px-2.5 py-1 border border-[#E7DFD5] shadow-xs">
+                  {(item.mediaType === 'reel' || item.mediaType === 'video' || item.videoUrl || item.embedUrl || item.tag?.includes('REEL')) && (
+                    <Play className="w-2.5 h-2.5 fill-[#8B2626] text-[#8B2626]" />
+                  )}
+                  <span>{item.tag}</span>
                 </div>
 
                 {/* Hover Quick-Action Overlay */}

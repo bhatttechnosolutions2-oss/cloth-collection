@@ -32,13 +32,24 @@ import {
   Tag,
   Eye,
   Camera,
-  FolderPlus
+  FolderPlus,
+  Play,
+  Video,
+  Film,
+  Maximize2
 } from 'lucide-react';
 import { useFashion } from '../context/FashionContext';
 import { FashionItem, MediaLibraryItem, WebsiteSlot } from '../types';
+import {
+  parseInstagramUrl,
+  resolveMediaItem,
+  captureVideoFrame,
+  REAL_BOUTIQUE_REEL_PRESETS,
+  ResolvedMedia
+} from '../utils/instagramResolver';
 
-// Curated Instagram High-Res Presets from @clothcollection.agra
-const INSTAGRAM_PRESETS = [
+// Curated Instagram High-Res Photo Presets from @clothcollection.agra
+const INSTAGRAM_PHOTO_PRESETS = [
   {
     category: 'tops' as const,
     categoryLabel: 'Tops & Shirts',
@@ -46,7 +57,7 @@ const INSTAGRAM_PRESETS = [
     image: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=1200&auto=format&fit=crop',
     tag: 'INSTAGRAM DROP',
     fabric: 'Stretch Ribbed Cotton Knit',
-    caption: 'New in store: Korean aesthetic puff-sleeve top in soft beige. Pairs with wide-leg jeans.',
+    caption: 'New in store: Korean aesthetic puff-sleeve top in soft beige. Sadar Bazar Agra store.',
     instagramUrl: 'https://instagram.com/clothcollection.agra',
   },
   {
@@ -99,52 +110,7 @@ const INSTAGRAM_PRESETS = [
     caption: '70s retro flare bootcut jeans with high-rise waist contouring.',
     instagramUrl: 'https://instagram.com/clothcollection.agra',
   },
-  {
-    category: 'kurtis' as const,
-    categoryLabel: "Kurti's & Sets",
-    title: 'Pastel Lavender Flared Anarkali Kurti',
-    image: 'https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?q=80&w=1200&auto=format&fit=crop',
-    tag: 'MOST LOVED',
-    fabric: 'Fine Viscose Silk Georgette',
-    caption: 'Lustrous pastel festive kurti with minimal gotta work on yoke and flared kalis.',
-    instagramUrl: 'https://instagram.com/clothcollection.agra',
-  },
-  {
-    category: 'bottoms' as const,
-    categoryLabel: "Girls' Bottoms",
-    title: 'Wide Leg Modal Rayon Palazzo Pants',
-    image: 'https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?q=80&w=1200&auto=format&fit=crop',
-    tag: 'EVERYDAY EDIT',
-    fabric: 'Feather-light Modal Rayon Silk',
-    caption: 'Feather-light flowing palazzo pants with full flare and drawstring waistband.',
-    instagramUrl: 'https://instagram.com/clothcollection.agra',
-  },
 ];
-
-// Helper to extract clean high-res image URL from Instagram post/reel or direct URL
-const resolveInstagramMediaUrl = (input: string): string => {
-  const clean = input.trim();
-  if (!clean) return '';
-
-  // Direct image URL or CDN
-  if (
-    clean.match(/\.(jpeg|jpg|gif|png|webp)($|\?)/i) ||
-    clean.includes('unsplash.com') ||
-    clean.includes('cdninstagram') ||
-    clean.includes('fbcdn.net')
-  ) {
-    return clean;
-  }
-
-  // Instagram shortcode matcher
-  const match = clean.match(/instagram\.com\/(?:p|reel|tv|reels)\/([A-Za-z0-9_-]+)/i);
-  if (match && match[1]) {
-    const shortcode = match[1];
-    return `https://images.weserv.nl/?url=https://instagram.com/p/${shortcode}/media/?size=l`;
-  }
-
-  return clean;
-};
 
 export const PhotoManagerModal: React.FC = () => {
   const {
@@ -178,11 +144,11 @@ export const PhotoManagerModal: React.FC = () => {
   const [pinError, setPinError] = useState(false);
 
   // Tabs
-  const [activeTab, setActiveTab] = useState<'fetch-ig' | 'vault' | 'slot-matrix' | 'export'>('fetch-ig');
+  const [activeTab, setActiveTab] = useState<'fetch-ig' | 'reels-videos' | 'vault' | 'slot-matrix' | 'export'>('fetch-ig');
 
-  // Single Instagram Importer
+  // Single Instagram / Reel Importer
   const [singleIgUrl, setSingleIgUrl] = useState('');
-  const [singleResolvedImage, setSingleResolvedImage] = useState<string | null>(null);
+  const [singleResolvedMedia, setSingleResolvedMedia] = useState<ResolvedMedia | null>(null);
   const [singleTitle, setSingleTitle] = useState('');
   const [singleCategory, setSingleCategory] = useState<'tops' | 'jeans' | 'kurtis' | 'bottoms'>('tops');
   const [singleTag, setSingleTag] = useState('INSTAGRAM DROP');
@@ -194,12 +160,28 @@ export const PhotoManagerModal: React.FC = () => {
   const [bulkCategory, setBulkCategory] = useState<'tops' | 'jeans' | 'kurtis' | 'bottoms'>('tops');
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
 
+  // Dedicated Reel Importer Tab state
+  const [reelInputUrl, setReelInputUrl] = useState('');
+  const [reelTitle, setReelTitle] = useState('');
+  const [reelCategory, setReelCategory] = useState<'tops' | 'jeans' | 'kurtis' | 'bottoms'>('tops');
+  const [reelTag, setReelTag] = useState('REEL DROP');
+  const [reelFabric, setReelFabric] = useState('Pure Boutique Fabric');
+  const [resolvedReelMedia, setResolvedReelMedia] = useState<ResolvedMedia | null>(null);
+  const [isUploadingVideo, setIsUploadingVideo] = useState(false);
+
+  // Vault Filter state
+  const [vaultFilter, setVaultFilter] = useState<'all' | 'reels' | 'photos'>('all');
+
+  // Preview Modal for Video or Reel in Vault
+  const [previewMediaItem, setPreviewMediaItem] = useState<MediaLibraryItem | null>(null);
+
   // Slot Placement Modal State (when user clicks "Slot into Website" from Vault)
   const [selectedVaultItem, setSelectedVaultItem] = useState<MediaLibraryItem | null>(null);
-  const [slotTarget, setSlotTarget] = useState<string>('hero');
+  const [slotTarget, setSlotTarget] = useState<string>('new-arrival');
   const [slotCategory, setSlotCategory] = useState<'tops' | 'jeans' | 'kurtis' | 'bottoms'>('tops');
   const [slotTitle, setSlotTitle] = useState('');
   const [slotFabric, setSlotFabric] = useState('Pure Boutique Fabric');
+  const [slotTag, setSlotTag] = useState('INSTAGRAM DROP');
   const [slotIgPostIndex, setSlotIgPostIndex] = useState<number>(0);
 
   // Direct Slot Replacement from Matrix
@@ -210,13 +192,14 @@ export const PhotoManagerModal: React.FC = () => {
   const [copiedCode, setCopiedCode] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const bulkFileInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
+  const hiddenVideoPlayerRef = useRef<HTMLVideoElement>(null);
 
   if (!isManagerOpen) return null;
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3500);
+    setTimeout(() => setToastMessage(null), 3800);
   };
 
   const handlePinSubmit = (e: React.FormEvent) => {
@@ -229,37 +212,51 @@ export const PhotoManagerModal: React.FC = () => {
     }
   };
 
-  // Fetch Single Instagram Link
+  // Fetch Single Instagram Link (Handles both Photos and Reels)
   const handleFetchSingleIg = () => {
     if (!singleIgUrl.trim()) {
-      showToast('⚠️ Please paste an Instagram Post URL or photo link');
+      showToast('⚠️ Please paste an Instagram Post or Reel URL');
       return;
     }
     setIsProcessingSingle(true);
-    const resolved = resolveInstagramMediaUrl(singleIgUrl);
-    setSingleResolvedImage(resolved);
+    const resolved = resolveMediaItem(singleIgUrl);
+    setSingleResolvedMedia(resolved);
+
+    if (resolved.isReel) {
+      setSingleTag('REEL DROP');
+    }
+
     if (!singleTitle) {
-      const match = singleIgUrl.match(/instagram\.com\/(?:p|reel|tv)\/([A-Za-z0-9_-]+)/i);
-      setSingleTitle(match ? `Instagram Drop #${match[1].substring(0, 5).toUpperCase()}` : 'Real Boutique Drop');
+      const match = singleIgUrl.match(/instagram\.com\/(?:p|reel|reels|tv)\/([A-Za-z0-9_-]+)/i);
+      setSingleTitle(
+        match
+          ? `${resolved.isReel ? 'Reel Drop' : 'Instagram Drop'} #${match[1].substring(0, 5).toUpperCase()}`
+          : 'Real Boutique Drop'
+      );
     }
     setIsProcessingSingle(false);
-    showToast('📸 Real Instagram photo fetched & verified!');
+    showToast(resolved.isReel ? '🎬 Real Instagram Reel resolved!' : '📸 Real Instagram photo fetched & verified!');
   };
 
-  // Save Single Fetched Photo to Media Vault + Optional Direct Slot Placement
+  // Save Single Fetched Photo/Reel to Media Vault + Optional Direct Slot Placement
   const handleSaveSingleToVault = async (andSlot: boolean = false) => {
-    if (!singleResolvedImage) {
-      showToast('⚠️ Fetch or select a photo first');
+    if (!singleResolvedMedia) {
+      showToast('⚠️ Fetch or select a photo or reel first');
       return;
     }
 
-    const title = singleTitle || 'Real Instagram Drop';
+    const title = singleTitle || (singleResolvedMedia.isReel ? 'Real Instagram Reel Drop' : 'Real Instagram Drop');
+    const isReel = singleResolvedMedia.isReel || singleResolvedMedia.mediaType === 'reel';
+
     await addToMediaLibrary([
       {
-        url: singleResolvedImage,
+        url: singleResolvedMedia.url,
         title,
-        source: 'instagram',
-        instagramUrl: singleIgUrl || 'https://instagram.com/clothcollection.agra',
+        source: isReel ? 'reel' : 'instagram',
+        mediaType: isReel ? 'reel' : 'image',
+        embedUrl: singleResolvedMedia.embedUrl,
+        videoUrl: singleResolvedMedia.videoUrl,
+        instagramUrl: singleResolvedMedia.instagramUrl || 'https://instagram.com/clothcollection.agra',
       },
     ]);
 
@@ -274,8 +271,11 @@ export const PhotoManagerModal: React.FC = () => {
       await addCustomItem(
         {
           title,
-          tag: singleTag || 'INSTAGRAM DROP',
-          image: singleResolvedImage,
+          tag: singleTag || (isReel ? 'REEL DROP' : 'INSTAGRAM DROP'),
+          image: singleResolvedMedia.url,
+          mediaType: isReel ? 'reel' : 'image',
+          embedUrl: singleResolvedMedia.embedUrl,
+          videoUrl: singleResolvedMedia.videoUrl,
           category: singleCategory,
           categoryLabel: categoryLabels[singleCategory],
           description: `Real boutique outfit in ${singleFabric}. Available at Clothes Collection, Sadar Bazar Agra.`,
@@ -286,22 +286,22 @@ export const PhotoManagerModal: React.FC = () => {
             sizes: ['Free Size', 'S', 'M', 'L', 'XL', 'XXL'],
             care: 'Gentle Wash Recommended',
           },
-          instagramUrl: singleIgUrl || 'https://instagram.com/clothcollection.agra',
+          instagramUrl: singleResolvedMedia.instagramUrl || 'https://instagram.com/clothcollection.agra',
         },
         'new-arrival'
       );
       showToast(`🎉 Added to Vault & published to "${categoryLabels[singleCategory]}"!`);
     } else {
-      showToast('✅ Photo saved to Real Media Vault!');
+      showToast('✅ Saved to Real Media Vault!');
     }
 
     // Reset Form
     setSingleIgUrl('');
-    setSingleResolvedImage(null);
+    setSingleResolvedMedia(null);
     setSingleTitle('');
   };
 
-  // Bulk Fetch Multiple Instagram Links
+  // Bulk Fetch Multiple Instagram Links (Handles both Posts and Reels)
   const handleBulkFetchInstagram = async () => {
     if (!bulkUrlsText.trim()) {
       showToast('⚠️ Please paste Instagram URLs (one per line)');
@@ -317,23 +317,27 @@ export const PhotoManagerModal: React.FC = () => {
     const itemsToAdd: Array<Omit<MediaLibraryItem, 'id' | 'importedAt'>> = [];
 
     lines.forEach((line, idx) => {
-      const resolved = resolveInstagramMediaUrl(line);
-      const match = line.match(/instagram\.com\/(?:p|reel|tv)\/([A-Za-z0-9_-]+)/i);
+      const resolved = resolveMediaItem(line);
+      const isReel = resolved.isReel;
+      const match = line.match(/instagram\.com\/(?:p|reel|reels|tv)\/([A-Za-z0-9_-]+)/i);
       const title = match
-        ? `Instagram Post #${match[1].substring(0, 5).toUpperCase()}`
-        : `Real Boutique Photo #${idx + 1}`;
+        ? `${isReel ? 'Reel' : 'Post'} #${match[1].substring(0, 5).toUpperCase()}`
+        : `Real Boutique Item #${idx + 1}`;
 
       itemsToAdd.push({
-        url: resolved,
+        url: resolved.url,
         title,
-        source: 'instagram',
-        instagramUrl: line.includes('instagram.com') ? line : 'https://instagram.com/clothcollection.agra',
+        source: isReel ? 'reel' : 'instagram',
+        mediaType: isReel ? 'reel' : 'image',
+        embedUrl: resolved.embedUrl,
+        videoUrl: resolved.videoUrl,
+        instagramUrl: resolved.instagramUrl || 'https://instagram.com/clothcollection.agra',
       });
     });
 
     if (itemsToAdd.length > 0) {
       await addToMediaLibrary(itemsToAdd);
-      showToast(`⚡ Successfully fetched & added ${itemsToAdd.length} real photos to Vault!`);
+      showToast(`⚡ Successfully fetched & added ${itemsToAdd.length} real photos & reels to Vault!`);
       setBulkUrlsText('');
       setActiveTab('vault');
     } else {
@@ -342,47 +346,168 @@ export const PhotoManagerModal: React.FC = () => {
     setIsBulkProcessing(false);
   };
 
-  // Batch File Upload from Device
-  const handleBatchFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    const count = files.length;
-    let processed = 0;
-    const itemsToAdd: Array<Omit<MediaLibraryItem, 'id' | 'importedAt'>> = [];
-
-    Array.from(files).forEach((file: File, idx) => {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const result = reader.result as string;
-        itemsToAdd.push({
-          url: result,
-          title: file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ') || `Real Client Photo #${idx + 1}`,
-          source: 'upload',
-          instagramUrl: 'https://instagram.com/clothcollection.agra',
-        });
-        processed++;
-        if (processed === count) {
-          await addToMediaLibrary(itemsToAdd);
-          showToast(`📁 Uploaded ${count} real photos to Vault!`);
-          setActiveTab('vault');
-        }
-      };
-      reader.readAsDataURL(file);
-    });
+  // Resolve Dedicated Reel Link
+  const handleResolveReelLink = () => {
+    if (!reelInputUrl.trim()) {
+      showToast('⚠️ Paste an Instagram Reel URL or video link');
+      return;
+    }
+    const resolved = resolveMediaItem(reelInputUrl);
+    setResolvedReelMedia(resolved);
+    if (!reelTitle) {
+      const match = reelInputUrl.match(/instagram\.com\/(?:reel|reels|p)\/([A-Za-z0-9_-]+)/i);
+      setReelTitle(match ? `Boutique Reel #${match[1].substring(0, 5).toUpperCase()}` : 'Live Reel Showcase');
+    }
+    showToast('🎬 Instagram Reel ready to import!');
   };
 
-  // 1-Click Apply Preset to Vault
-  const handleAddPresetToVault = async (preset: typeof INSTAGRAM_PRESETS[0]) => {
+  // Video File Upload & Canvas Snapshot Generation
+  const handleVideoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingVideo(true);
+    const videoUrl = URL.createObjectURL(file);
+    const videoElem = document.createElement('video');
+    videoElem.src = videoUrl;
+    videoElem.muted = true;
+    videoElem.playsInline = true;
+    videoElem.currentTime = 0.5;
+
+    videoElem.onloadeddata = async () => {
+      try {
+        videoElem.play().then(async () => {
+          videoElem.pause();
+          const snapshotUrl = await captureVideoFrame(videoElem);
+          const title = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ') || 'Client Video Drop';
+
+          setResolvedReelMedia({
+            url: snapshotUrl,
+            mediaType: 'video',
+            isReel: true,
+            shortcode: null,
+            videoUrl: videoUrl,
+            instagramUrl: 'https://instagram.com/clothcollection.agra',
+            fallbackUrls: [snapshotUrl],
+          });
+          setReelTitle(title);
+          setIsUploadingVideo(false);
+          showToast('🎥 Video uploaded & cover snapshot generated!');
+        });
+      } catch (err) {
+        console.warn('Frame capture fallback:', err);
+        const fallbackPoster = 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?q=80&w=1200&auto=format&fit=crop';
+        setResolvedReelMedia({
+          url: fallbackPoster,
+          mediaType: 'video',
+          isReel: true,
+          shortcode: null,
+          videoUrl: videoUrl,
+          instagramUrl: 'https://instagram.com/clothcollection.agra',
+          fallbackUrls: [fallbackPoster],
+        });
+        setIsUploadingVideo(false);
+        showToast('🎥 Video loaded with default cover!');
+      }
+    };
+  };
+
+  // Save Dedicated Reel to Vault & Slot
+  const handleSaveReelToVaultAndSlot = async (andSlot: boolean = false) => {
+    if (!resolvedReelMedia) {
+      showToast('⚠️ Please load or resolve a Reel first');
+      return;
+    }
+
+    const title = reelTitle || 'Real Instagram Reel Drop';
+    await addToMediaLibrary([
+      {
+        url: resolvedReelMedia.url,
+        title,
+        source: 'reel',
+        mediaType: resolvedReelMedia.mediaType || 'reel',
+        embedUrl: resolvedReelMedia.embedUrl,
+        videoUrl: resolvedReelMedia.videoUrl,
+        instagramUrl: resolvedReelMedia.instagramUrl || 'https://instagram.com/clothcollection.agra',
+      },
+    ]);
+
+    if (andSlot) {
+      const categoryLabels: Record<string, string> = {
+        tops: 'Tops & Shirts',
+        jeans: 'Jeans & Denims',
+        kurtis: "Kurti's & Sets",
+        bottoms: "Girls' Bottoms",
+      };
+
+      await addCustomItem(
+        {
+          title,
+          tag: reelTag || 'REEL DROP',
+          image: resolvedReelMedia.url,
+          mediaType: resolvedReelMedia.mediaType || 'reel',
+          embedUrl: resolvedReelMedia.embedUrl,
+          videoUrl: resolvedReelMedia.videoUrl,
+          category: reelCategory,
+          categoryLabel: categoryLabels[reelCategory],
+          description: `Live boutique try-on reel in ${reelFabric}. Available at Clothes Collection, Sadar Bazar Agra.`,
+          details: {
+            fabric: reelFabric,
+            fit: reelCategory === 'jeans' ? 'High-Rise Wide Leg Fit' : 'Tailored Signature Fit',
+            occasion: 'Everyday & Party Styling',
+            sizes: ['Free Size', 'S', 'M', 'L', 'XL', 'XXL'],
+            care: 'Dry Clean / Gentle Wash',
+          },
+          instagramUrl: resolvedReelMedia.instagramUrl || 'https://instagram.com/clothcollection.agra',
+        },
+        'new-arrival'
+      );
+      showToast(`🎬 Reel Drop published to "${categoryLabels[reelCategory]}"!`);
+    } else {
+      showToast('✅ Reel saved to Media Vault!');
+    }
+
+    setReelInputUrl('');
+    setResolvedReelMedia(null);
+    setReelTitle('');
+  };
+
+  // Import Boutique Reel Preset
+  const handleImportReelPreset = async (preset: typeof REAL_BOUTIQUE_REEL_PRESETS[0]) => {
     await addToMediaLibrary([
       {
         url: preset.image,
         title: preset.title,
-        source: 'preset',
+        source: 'reel',
+        mediaType: 'reel',
+        embedUrl: preset.embedUrl,
         instagramUrl: preset.instagramUrl,
       },
     ]);
-    showToast(`✨ Added "${preset.title}" to Real Photo Vault!`);
+
+    await addCustomItem(
+      {
+        title: preset.title,
+        tag: preset.tag,
+        image: preset.image,
+        mediaType: 'reel',
+        embedUrl: preset.embedUrl,
+        category: preset.category,
+        categoryLabel: preset.categoryLabel,
+        description: preset.caption,
+        details: {
+          fabric: preset.fabric,
+          fit: preset.category === 'jeans' ? 'High-Rise Flare Denim' : 'Tailored Luxury Cut',
+          occasion: 'Boutique Collection',
+          sizes: ['Free Size', 'S', 'M', 'L', 'XL'],
+          care: 'Gentle Wash',
+        },
+        instagramUrl: preset.instagramUrl,
+      },
+      'new-arrival'
+    );
+
+    showToast(`🎬 Imported & Published Reel: "${preset.title}"!`);
   };
 
   // Execute Slot Placement from Vault
@@ -391,6 +516,7 @@ export const PhotoManagerModal: React.FC = () => {
 
     const imageUrl = selectedVaultItem.url;
     const title = slotTitle || selectedVaultItem.title || 'Boutique Outfit';
+    const isReel = selectedVaultItem.mediaType === 'reel' || selectedVaultItem.mediaType === 'video';
 
     if (slotTarget === 'hero') {
       await assignPhotoToSlot({ type: 'hero' }, imageUrl);
@@ -406,22 +532,40 @@ export const PhotoManagerModal: React.FC = () => {
           category: slotCategory,
           title,
           fabric: slotFabric,
-          tag: 'INSTAGRAM DROP',
+          tag: slotTag || (isReel ? 'REEL DROP' : 'INSTAGRAM DROP'),
+          mediaType: selectedVaultItem.mediaType,
+          embedUrl: selectedVaultItem.embedUrl,
+          videoUrl: selectedVaultItem.videoUrl,
         },
         imageUrl,
         { instagramUrl: selectedVaultItem.instagramUrl }
       );
-      showToast(`🛍️ Added new outfit to "${slotCategory.toUpperCase()}"!`);
+      showToast(`🛍️ Added ${isReel ? 'Reel' : 'Outfit'} to "${slotCategory.toUpperCase()}"!`);
     } else if (slotTarget === 'instagram-feed') {
       const targetPost = instagramPosts[slotIgPostIndex] || instagramPosts[0];
       await assignPhotoToSlot(
-        { type: 'instagramPost', postId: targetPost.id },
+        {
+          type: 'instagramPost',
+          postId: targetPost.id,
+          mediaType: selectedVaultItem.mediaType,
+          embedUrl: selectedVaultItem.embedUrl,
+          videoUrl: selectedVaultItem.videoUrl,
+        },
         imageUrl,
         { caption: `${title} - Real in-store arrival at Clothes Collection Sadar Bazar Agra.` }
       );
       showToast(`📸 Replaced Instagram Feed Tile #${slotIgPostIndex + 1}!`);
     } else if (slotTarget === 'moodboard') {
-      await assignPhotoToSlot({ type: 'editorial' }, imageUrl, { title });
+      await assignPhotoToSlot(
+        {
+          type: 'editorial',
+          mediaType: selectedVaultItem.mediaType,
+          embedUrl: selectedVaultItem.embedUrl,
+          videoUrl: selectedVaultItem.videoUrl,
+        },
+        imageUrl,
+        { title }
+      );
       showToast('🖼️ Added to Weekly Moodboard Gallery!');
     }
 
@@ -429,9 +573,13 @@ export const PhotoManagerModal: React.FC = () => {
   };
 
   // Direct Slot Replacement from Matrix
-  const handleApplyPhotoToMatrixSlot = async (photoUrl: string) => {
+  const handleApplyPhotoToMatrixSlot = async (photoUrl: string, mediaItem?: MediaLibraryItem) => {
     if (!replacingSlot) return;
-    await assignPhotoToSlot(replacingSlot, photoUrl);
+    await assignPhotoToSlot(replacingSlot, photoUrl, {
+      mediaType: mediaItem?.mediaType,
+      embedUrl: mediaItem?.embedUrl,
+      videoUrl: mediaItem?.videoUrl,
+    });
     showToast('✅ Slot photo successfully replaced & synced live!');
     setReplacingSlot(null);
   };
@@ -454,6 +602,12 @@ export const PhotoManagerModal: React.FC = () => {
     showToast('📋 All Real Images & Website Config copied to clipboard!');
   };
 
+  const filteredVault = mediaLibrary.filter((item) => {
+    if (vaultFilter === 'reels') return item.mediaType === 'reel' || item.mediaType === 'video' || item.source === 'reel';
+    if (vaultFilter === 'photos') return item.mediaType !== 'reel' && item.mediaType !== 'video' && item.source !== 'reel';
+    return true;
+  });
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
       {/* Toast Notification */}
@@ -475,10 +629,10 @@ export const PhotoManagerModal: React.FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="font-serif text-sm sm:text-base tracking-wide font-medium">
-                  Real Boutique Photo & Instagram Slot Studio
+                  Real Instagram Photo & Reel Video Studio
                 </h3>
                 <span className="hidden sm:inline-block text-[10px] font-mono uppercase px-2 py-0.5 bg-emerald-950 text-emerald-300 border border-emerald-700/50 font-bold">
-                  100% Real Client Images (No AI)
+                  Photos & Reels Live Sync
                 </span>
               </div>
               <p className="text-xs text-stone-400">
@@ -547,7 +701,7 @@ export const PhotoManagerModal: React.FC = () => {
             {/* Sidebar Navigation */}
             <div className="w-full md:w-64 bg-[#F4EFE6] border-r border-[#E7DFD5] p-3 flex md:flex-col gap-1 overflow-x-auto md:overflow-y-auto shrink-0">
               <div className="hidden md:block text-[10px] font-bold tracking-[0.2em] text-[#8B2626] uppercase px-3 py-1.5">
-                REAL PHOTO WORKSPACE
+                MEDIA WORKSPACE
               </div>
 
               <button
@@ -563,6 +717,18 @@ export const PhotoManagerModal: React.FC = () => {
               </button>
 
               <button
+                onClick={() => setActiveTab('reels-videos')}
+                className={`flex items-center gap-2.5 px-3 py-2.5 text-xs font-medium text-left transition-all whitespace-nowrap ${
+                  activeTab === 'reels-videos'
+                    ? 'bg-[#8B2626] text-white font-semibold shadow-xs'
+                    : 'text-stone-800 hover:bg-[#E7DFD5]'
+                }`}
+              >
+                <Film className="w-4 h-4 text-[#D4AF37]" />
+                <span className="font-semibold">2. Import Instagram Reels</span>
+              </button>
+
+              <button
                 onClick={() => setActiveTab('vault')}
                 className={`flex items-center justify-between gap-2.5 px-3 py-2.5 text-xs font-medium text-left transition-all whitespace-nowrap ${
                   activeTab === 'vault'
@@ -572,7 +738,7 @@ export const PhotoManagerModal: React.FC = () => {
               >
                 <div className="flex items-center gap-2.5">
                   <FolderOpen className="w-4 h-4 text-[#D4AF37]" />
-                  <span>2. Real Photo Vault</span>
+                  <span>3. Real Media Vault</span>
                 </div>
                 <span className="text-[10px] px-1.5 py-0.2 bg-stone-700 text-stone-200 font-mono rounded">
                   {mediaLibrary.length}
@@ -588,7 +754,7 @@ export const PhotoManagerModal: React.FC = () => {
                 }`}
               >
                 <LayoutGrid className="w-4 h-4 text-[#D4AF37]" />
-                <span>3. Website Slot Matrix</span>
+                <span>4. Website Slot Matrix</span>
               </button>
 
               <div className="my-2 border-t border-[#D9D0C3] hidden md:block" />
@@ -598,254 +764,483 @@ export const PhotoManagerModal: React.FC = () => {
                 className={`flex items-center gap-2.5 px-3 py-2.5 text-xs font-medium text-left transition-all whitespace-nowrap ${
                   activeTab === 'export'
                     ? 'bg-[#1C1917] text-white font-semibold shadow-xs'
-                    : 'text-stone-700 hover:bg-[#E7DFD5]'
+                    : 'text-stone-800 hover:bg-[#E7DFD5]'
                 }`}
               >
-                <Database className="w-4 h-4 text-[#D4AF37]" />
-                <span>Cloud Sync & Static Code</span>
+                <Download className="w-4 h-4 text-[#D4AF37]" />
+                <span>5. Sync & Static JSON</span>
               </button>
+
+              {/* Status footer */}
+              <div className="hidden md:block mt-auto p-3 bg-white/70 border border-[#E7DFD5] text-[11px] text-stone-600">
+                <div className="font-semibold text-stone-900 mb-1 flex items-center gap-1.5">
+                  <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Verified Agra Boutique Mode</span>
+                </div>
+                <p className="text-[10px] text-stone-500 leading-tight">
+                  Supports Instagram Posts, Reels embed, and direct video uploads.
+                </p>
+              </div>
             </div>
 
-            {/* Main Area */}
-            <div className="flex-1 p-4 sm:p-6 overflow-y-auto bg-[#FAF7F2]">
-              {/* TAB 1: FETCH INSTAGRAM PHOTOS */}
+            {/* Content Area */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-[#FAF7F2]">
+              {/* TAB 1: INSTAGRAM PHOTO EXTRACTOR */}
               {activeTab === 'fetch-ig' && (
-                <div className="space-y-6 max-w-5xl">
-                  {/* Banner */}
-                  <div className="bg-[#1C1917] text-white p-5 border border-stone-800 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                    <div>
-                      <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#D4AF37] tracking-widest uppercase mb-1">
-                        <Instagram className="w-3.5 h-3.5" />
-                        <span>Instagram Real Media Extractor</span>
-                      </div>
-                      <h4 className="font-serif text-xl sm:text-2xl text-[#FAF7F2]">
-                        Fetch All Real Boutique Photos from Instagram
-                      </h4>
-                      <p className="text-xs text-stone-300 font-light mt-1">
-                        Paste Instagram Post URLs, Reel links, or batch upload real client photography. Every photo is decoded in high resolution and ready to slot anywhere on the website!
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Section A: Single URL Fetcher */}
-                  <div className="bg-white p-5 border border-[#E7DFD5] shadow-xs space-y-4">
-                    <div className="text-xs font-semibold uppercase tracking-wider text-[#8B2626] border-b border-stone-200 pb-2 flex items-center justify-between">
-                      <span className="flex items-center gap-1.5">
-                        <Zap className="w-3.5 h-3.5" />
-                        <span>Method 1: Single Instagram Post / Reel / Image Link</span>
+                <div className="space-y-6 max-w-4xl mx-auto">
+                  {/* Single Post Resolver */}
+                  <div className="bg-white p-5 sm:p-6 border border-[#E7DFD5] shadow-xs">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="p-1.5 bg-[#8B2626] text-white">
+                        <Instagram className="w-4 h-4" />
                       </span>
-                      <span className="text-[11px] text-stone-500 font-normal">Real-Time Extraction</span>
+                      <h4 className="font-serif text-lg font-normal text-[#1C1917]">
+                        Single Instagram Post & Photo Resolver
+                      </h4>
                     </div>
+                    <p className="text-xs text-stone-600 mb-4 font-light">
+                      Paste any public Instagram post URL (e.g.{' '}
+                      <code className="bg-stone-100 px-1 py-0.5 text-stone-800 text-[11px]">
+                        https://www.instagram.com/p/C12345/
+                      </code>
+                      ) or direct image URL.
+                    </p>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="md:col-span-2 space-y-3">
-                        <div>
-                          <label className="text-xs font-medium text-stone-700 block mb-1">
-                            Instagram Post Link / Reel URL / Direct Image Link
-                          </label>
-                          <div className="flex gap-2">
-                            <input
-                              type="text"
-                              value={singleIgUrl}
-                              onChange={(e) => setSingleIgUrl(e.target.value)}
-                              placeholder="e.g. https://www.instagram.com/p/DA_12345/ or image URL..."
-                              className="flex-1 text-xs px-3 py-2.5 border border-stone-300 focus:outline-none focus:border-[#8B2626]"
-                            />
-                            <button
-                              type="button"
-                              onClick={handleFetchSingleIg}
-                              disabled={isProcessingSingle}
-                              className="px-4 py-2.5 bg-[#1C1917] hover:bg-[#8B2626] text-white text-xs font-semibold tracking-wider uppercase transition-colors shrink-0 flex items-center gap-1.5"
-                            >
-                              <Zap className="w-3.5 h-3.5 text-[#D4AF37]" />
-                              <span>{isProcessingSingle ? 'Fetching...' : 'Fetch Photo'}</span>
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div>
-                            <label className="text-xs font-medium text-stone-700 block mb-1">Outfit Title / Description</label>
-                            <input
-                              type="text"
-                              value={singleTitle}
-                              onChange={(e) => setSingleTitle(e.target.value)}
-                              placeholder="e.g. Korean Ribbed Puff Sleeve Crop Top"
-                              className="w-full text-xs px-3 py-2 border border-stone-300 focus:outline-none focus:border-[#8B2626]"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="text-xs font-medium text-stone-700 block mb-1">Target Department</label>
-                            <select
-                              value={singleCategory}
-                              onChange={(e) => setSingleCategory(e.target.value as any)}
-                              className="w-full text-xs px-3 py-2 border border-stone-300 focus:outline-none focus:border-[#8B2626] bg-white font-medium"
-                            >
-                              <option value="tops">👚 Tops & Shirts</option>
-                              <option value="jeans">👖 Jeans & Denims</option>
-                              <option value="kurtis">👗 Kurti's & Tunics</option>
-                              <option value="bottoms">🩳 Girls' Bottoms & Trousers</option>
-                            </select>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-wrap gap-2 pt-2">
-                          <button
-                            type="button"
-                            onClick={() => handleSaveSingleToVault(false)}
-                            disabled={!singleResolvedImage}
-                            className={`px-4 py-2 bg-stone-800 hover:bg-stone-900 text-white text-xs font-semibold uppercase tracking-wider transition-colors flex items-center gap-1.5 ${
-                              !singleResolvedImage ? 'opacity-50 cursor-not-allowed' : ''
-                            }`}
-                          >
-                            <FolderPlus className="w-3.5 h-3.5 text-[#D4AF37]" />
-                            <span>Save to Real Vault</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleSaveSingleToVault(true)}
-                            disabled={!singleResolvedImage}
-                            className={`px-4 py-2 bg-[#8B2626] hover:bg-[#6D1E1E] text-white text-xs font-semibold uppercase tracking-wider transition-colors flex items-center gap-1.5 ${
-                              !singleResolvedImage ? 'opacity-50 cursor-not-allowed' : ''
-                            }`}
-                          >
-                            <CheckCircle2 className="w-3.5 h-3.5 text-[#D4AF37]" />
-                            <span>Save & Publish to New Edit</span>
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Preview Box */}
-                      <div className="flex flex-col items-center justify-center p-2 bg-stone-50 border border-stone-200 aspect-[3/4] max-h-56 relative overflow-hidden">
-                        {singleResolvedImage ? (
-                          <div className="relative w-full h-full">
-                            <img
-                              src={singleResolvedImage}
-                              alt="Fetched Preview"
-                              className="w-full h-full object-cover"
-                            />
-                            <div className="absolute top-1 right-1 bg-emerald-600 text-white text-[9px] px-1.5 py-0.5 font-bold uppercase">
-                              Verified
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="text-center text-stone-400 space-y-1">
-                            <Instagram className="w-8 h-8 mx-auto opacity-40 text-stone-400" />
-                            <p className="text-xs font-medium">Real Photo Preview</p>
-                            <p className="text-[10px] text-stone-400">Paste URL & tap Fetch Photo</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Section B: Bulk Multi-URL Batch Fetcher & Multi-File Uploader */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Bulk URL Paste */}
-                    <div className="bg-white p-5 border border-[#E7DFD5] shadow-xs space-y-3">
-                      <div className="text-xs font-semibold uppercase tracking-wider text-[#8B2626] border-b border-stone-200 pb-2 flex items-center justify-between">
-                        <span className="flex items-center gap-1.5">
-                          <Layers className="w-3.5 h-3.5" />
-                          <span>Method 2: Batch Fetch Multiple Instagram Links</span>
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-stone-600">
-                        Paste 5, 10, or 20 Instagram URLs (one link per line). All will be fetched into your Real Photo Vault simultaneously.
-                      </p>
-
-                      <textarea
-                        rows={4}
-                        value={bulkUrlsText}
-                        onChange={(e) => setBulkUrlsText(e.target.value)}
-                        placeholder="https://instagram.com/p/CODE1/&#10;https://instagram.com/p/CODE2/&#10;https://instagram.com/reel/CODE3/"
-                        className="w-full text-xs font-mono p-2.5 border border-stone-300 focus:outline-none focus:border-[#8B2626]"
+                    <div className="flex flex-col sm:flex-row gap-2 mb-4">
+                      <input
+                        type="url"
+                        value={singleIgUrl}
+                        onChange={(e) => setSingleIgUrl(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleFetchSingleIg()}
+                        placeholder="Paste Instagram Post or Photo URL..."
+                        className="flex-1 px-4 py-2.5 border border-stone-300 text-xs focus:outline-none focus:border-[#8B2626] bg-[#FAF7F2]"
                       />
-
                       <button
-                        type="button"
-                        onClick={handleBulkFetchInstagram}
-                        disabled={isBulkProcessing || !bulkUrlsText.trim()}
-                        className={`w-full py-2.5 bg-[#1C1917] hover:bg-[#8B2626] text-white text-xs font-semibold uppercase tracking-wider transition-colors flex items-center justify-center gap-2 ${
-                          !bulkUrlsText.trim() ? 'opacity-50 cursor-not-allowed' : ''
-                        }`}
+                        onClick={handleFetchSingleIg}
+                        disabled={isProcessingSingle}
+                        className="px-6 py-2.5 bg-[#1C1917] hover:bg-[#8B2626] text-white text-xs font-semibold tracking-wider uppercase transition-colors shrink-0 flex items-center justify-center gap-2"
                       >
-                        <Zap className="w-3.5 h-3.5 text-[#D4AF37]" />
-                        <span>{isBulkProcessing ? 'Fetching All...' : '⚡ Fetch All into Real Vault'}</span>
+                        {isProcessingSingle ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5 text-[#D4AF37]" />}
+                        <span>FETCH PHOTO</span>
                       </button>
                     </div>
 
-                    {/* Multi-File Upload from Phone/PC */}
-                    <div className="bg-white p-5 border border-[#E7DFD5] shadow-xs space-y-3">
-                      <div className="text-xs font-semibold uppercase tracking-wider text-[#8B2626] border-b border-stone-200 pb-2 flex items-center justify-between">
-                        <span className="flex items-center gap-1.5">
-                          <Upload className="w-3.5 h-3.5" />
-                          <span>Method 3: Batch Upload Client Real Photos</span>
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-stone-600">
-                        Select multiple raw photos from WhatsApp, phone gallery, or computer to load directly into the vault.
-                      </p>
+                    {/* Fetched Result Preview & Slot Customizer */}
+                    {singleResolvedMedia && (
+                      <div className="mt-5 p-4 bg-[#F7F3EC] border border-[#E7DFD5] flex flex-col md:flex-row gap-5">
+                        <div className="w-full md:w-44 aspect-[3/4] bg-stone-300 relative overflow-hidden shrink-0 border border-stone-300">
+                          <img
+                            src={singleResolvedMedia.url}
+                            alt="Fetched"
+                            className="w-full h-full object-cover"
+                            referrerPolicy="no-referrer"
+                          />
+                          <div className="absolute top-2 left-2 bg-emerald-600 text-white text-[9px] font-bold px-2 py-0.5 uppercase tracking-wider shadow-xs">
+                            {singleResolvedMedia.isReel ? 'REEL VIDEO' : 'REAL PHOTO'}
+                          </div>
+                        </div>
 
-                      <div className="border-2 border-dashed border-stone-300 p-6 text-center hover:border-[#8B2626] transition-colors cursor-pointer bg-stone-50/50"
-                        onClick={() => bulkFileInputRef.current?.click()}
-                      >
-                        <Upload className="w-8 h-8 mx-auto text-stone-400 mb-2" />
-                        <span className="text-xs font-medium text-[#8B2626] block">
-                          Click to select multiple photos (JPG, PNG, WebP)
-                        </span>
-                        <span className="text-[10px] text-stone-500">Hold Ctrl / Shift to select 10+ photos</span>
-                        <input
-                          type="file"
-                          ref={bulkFileInputRef}
-                          onChange={handleBatchFileUpload}
-                          multiple
-                          accept="image/*"
-                          className="hidden"
-                        />
+                        <div className="flex-1 space-y-3">
+                          <h5 className="font-serif text-sm font-semibold text-[#1C1917]">
+                            Configure Boutique Item & Placement
+                          </h5>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-[10px] font-semibold uppercase text-stone-500 mb-1">
+                                Outfit Title
+                              </label>
+                              <input
+                                type="text"
+                                value={singleTitle}
+                                onChange={(e) => setSingleTitle(e.target.value)}
+                                placeholder="e.g. Ribbed Puff Sleeve Top"
+                                className="w-full px-3 py-1.5 border border-stone-300 text-xs bg-white focus:outline-none focus:border-[#8B2626]"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[10px] font-semibold uppercase text-stone-500 mb-1">
+                                Category
+                              </label>
+                              <select
+                                value={singleCategory}
+                                onChange={(e) => setSingleCategory(e.target.value as any)}
+                                className="w-full px-3 py-1.5 border border-stone-300 text-xs bg-white focus:outline-none focus:border-[#8B2626]"
+                              >
+                                <option value="tops">Tops & Shirts</option>
+                                <option value="jeans">Jeans & Denims</option>
+                                <option value="kurtis">Kurti's & Sets</option>
+                                <option value="bottoms">Girls' Bottoms</option>
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="block text-[10px] font-semibold uppercase text-stone-500 mb-1">
+                                Fabric Details
+                              </label>
+                              <input
+                                type="text"
+                                value={singleFabric}
+                                onChange={(e) => setSingleFabric(e.target.value)}
+                                placeholder="e.g. 100% Pure Cotton"
+                                className="w-full px-3 py-1.5 border border-stone-300 text-xs bg-white focus:outline-none focus:border-[#8B2626]"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[10px] font-semibold uppercase text-stone-500 mb-1">
+                                Tag Badge
+                              </label>
+                              <select
+                                value={singleTag}
+                                onChange={(e) => setSingleTag(e.target.value)}
+                                className="w-full px-3 py-1.5 border border-stone-300 text-xs bg-white focus:outline-none focus:border-[#8B2626]"
+                              >
+                                <option value="INSTAGRAM DROP">INSTAGRAM DROP</option>
+                                <option value="REEL DROP">REEL DROP</option>
+                                <option value="NEW ARRIVAL">NEW ARRIVAL</option>
+                                <option value="BESTSELLER">BESTSELLER</option>
+                                <option value="ETHNIC EDIT">ETHNIC EDIT</option>
+                                <option value="WEEKEND STYLE">WEEKEND STYLE</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap gap-2 pt-2">
+                            <button
+                              onClick={() => handleSaveSingleToVault(false)}
+                              className="px-4 py-2 bg-white border border-stone-300 hover:bg-stone-50 text-xs font-semibold uppercase tracking-wider text-stone-800"
+                            >
+                              Save to Vault Only
+                            </button>
+                            <button
+                              onClick={() => handleSaveSingleToVault(true)}
+                              className="px-5 py-2 bg-[#8B2626] hover:bg-[#701E1E] text-white text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5 shadow-xs"
+                            >
+                              <Sparkles className="w-3.5 h-3.5 text-[#D4AF37]" />
+                              <span>Save & Publish to "{singleCategory.toUpperCase()}"</span>
+                            </button>
+                          </div>
+                        </div>
                       </div>
+                    )}
+                  </div>
+
+                  {/* Multi-URL Batch Instagram Fetcher */}
+                  <div className="bg-white p-5 sm:p-6 border border-[#E7DFD5] shadow-xs">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Layers className="w-5 h-5 text-[#8B2626]" />
+                      <h4 className="font-serif text-lg font-normal text-[#1C1917]">
+                        Bulk Multi-URL Batch Fetcher (10–20 Links at Once)
+                      </h4>
+                    </div>
+                    <p className="text-xs text-stone-600 mb-3 font-light">
+                      Paste multiple Instagram post & reel links (one per line). All will be fetched and added to your Real Photo Vault automatically!
+                    </p>
+
+                    <textarea
+                      rows={4}
+                      value={bulkUrlsText}
+                      onChange={(e) => setBulkUrlsText(e.target.value)}
+                      placeholder="https://www.instagram.com/p/C_abc123/&#10;https://www.instagram.com/p/D_xyz789/&#10;https://www.instagram.com/reel/C8qK3U_S4Ym/"
+                      className="w-full p-3 border border-stone-300 text-xs font-mono bg-[#FAF7F2] focus:outline-none focus:border-[#8B2626] mb-3"
+                    />
+
+                    <div className="flex justify-between items-center">
+                      <span className="text-[11px] text-stone-500">
+                        {bulkUrlsText.split('\n').filter((l) => l.trim().length > 0).length} links ready to batch process
+                      </span>
+                      <button
+                        onClick={handleBulkFetchInstagram}
+                        disabled={isBulkProcessing}
+                        className="px-6 py-2.5 bg-[#8B2626] hover:bg-[#701E1E] text-white text-xs font-semibold tracking-wider uppercase transition-colors flex items-center gap-2"
+                      >
+                        {isBulkProcessing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5 text-[#D4AF37]" />}
+                        <span>FETCH & SAVE ALL TO VAULT</span>
+                      </button>
                     </div>
                   </div>
 
-                  {/* Section C: Curated Boutique Preset Packs */}
-                  <div className="bg-white p-5 border border-[#E7DFD5] shadow-xs space-y-3">
-                    <div className="flex items-center justify-between border-b border-stone-200 pb-2">
-                      <div className="text-xs font-semibold uppercase tracking-wider text-stone-700 flex items-center gap-1.5">
-                        <Instagram className="w-4 h-4 text-[#8B2626]" />
-                        <span>Quick Presets from @clothcollection.agra</span>
+                  {/* Curated Instagram High-Res Presets */}
+                  <div className="bg-white p-5 sm:p-6 border border-[#E7DFD5]">
+                    <h4 className="font-serif text-base font-semibold text-[#1C1917] mb-2">
+                      Ready-to-Use Agra Boutique Photo Presets
+                    </h4>
+                    <p className="text-xs text-stone-600 mb-4 font-light">
+                      Click any real look below to instantly import it into your Media Vault.
+                    </p>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+                      {INSTAGRAM_PHOTO_PRESETS.map((preset, idx) => (
+                        <div key={idx} className="group relative border border-stone-200 bg-[#FAF7F2] overflow-hidden flex flex-col">
+                          <div className="aspect-[3/4] relative overflow-hidden bg-stone-200">
+                            <img
+                              src={preset.image}
+                              alt={preset.title}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                              referrerPolicy="no-referrer"
+                            />
+                            <div className="absolute top-1 left-1 bg-black/80 text-white text-[9px] px-1.5 py-0.5">
+                              {preset.categoryLabel.split(' ')[0]}
+                            </div>
+                          </div>
+                          <div className="p-2 flex flex-col justify-between flex-1">
+                            <p className="text-[11px] font-medium line-clamp-1 text-stone-800 mb-1">
+                              {preset.title}
+                            </p>
+                            <button
+                              onClick={() => {
+                                addToMediaLibrary([
+                                  {
+                                    url: preset.image,
+                                    title: preset.title,
+                                    source: 'preset',
+                                    instagramUrl: preset.instagramUrl,
+                                  },
+                                ]);
+                                showToast(`Added "${preset.title}" to Vault!`);
+                              }}
+                              className="w-full py-1 bg-[#1C1917] hover:bg-[#8B2626] text-white text-[10px] uppercase font-semibold transition-colors"
+                            >
+                              + Add to Vault
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 2: DEDICATED REEL & VIDEO IMPORTER */}
+              {activeTab === 'reels-videos' && (
+                <div className="space-y-6 max-w-4xl mx-auto">
+                  {/* Reel Link & Video Resolver */}
+                  <div className="bg-white p-5 sm:p-6 border border-[#E7DFD5] shadow-xs">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="p-1.5 bg-[#8B2626] text-white">
+                        <Film className="w-4 h-4" />
+                      </span>
+                      <h4 className="font-serif text-lg font-normal text-[#1C1917]">
+                        Import Instagram Reels & Boutique Videos
+                      </h4>
+                    </div>
+                    <p className="text-xs text-stone-600 mb-4 font-light">
+                      Paste an Instagram Reel URL (e.g.{' '}
+                      <code className="bg-stone-100 px-1 py-0.5 text-stone-800 text-[11px]">
+                        https://www.instagram.com/reel/C8qK3U_S4Ym/
+                      </code>
+                      ), direct .mp4 video URL, or upload a product trial video from your phone/PC.
+                    </p>
+
+                    {/* Input Methods: URL or File */}
+                    <div className="space-y-4">
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <input
+                          type="url"
+                          value={reelInputUrl}
+                          onChange={(e) => setReelInputUrl(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && handleResolveReelLink()}
+                          placeholder="Paste Instagram Reel URL or MP4 link..."
+                          className="flex-1 px-4 py-2.5 border border-stone-300 text-xs focus:outline-none focus:border-[#8B2626] bg-[#FAF7F2]"
+                        />
+                        <button
+                          onClick={handleResolveReelLink}
+                          className="px-6 py-2.5 bg-[#8B2626] hover:bg-[#701E1E] text-white text-xs font-semibold tracking-wider uppercase transition-colors shrink-0 flex items-center justify-center gap-2"
+                        >
+                          <Play className="w-3.5 h-3.5 fill-[#D4AF37] text-[#D4AF37]" />
+                          <span>RESOLVE REEL</span>
+                        </button>
                       </div>
-                      <span className="text-[11px] text-stone-500">1-Click Add to Vault</span>
+
+                      {/* Video File Upload */}
+                      <div className="flex items-center gap-3 pt-2">
+                        <button
+                          onClick={() => videoInputRef.current?.click()}
+                          disabled={isUploadingVideo}
+                          className="px-4 py-2 bg-white border border-stone-300 hover:bg-[#F4EFE6] text-xs font-semibold uppercase tracking-wider text-stone-800 flex items-center gap-2"
+                        >
+                          <Upload className="w-3.5 h-3.5 text-[#8B2626]" />
+                          <span>{isUploadingVideo ? 'Processing Video Frame...' : 'Upload Video File (.mp4/.mov)'}</span>
+                        </button>
+                        <input
+                          ref={videoInputRef}
+                          type="file"
+                          accept="video/*"
+                          onChange={handleVideoFileUpload}
+                          className="hidden"
+                        />
+                        <span className="text-[11px] text-stone-500 font-light">
+                          Canvas snapshot cover will be automatically extracted from video frame.
+                        </span>
+                      </div>
                     </div>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                      {INSTAGRAM_PRESETS.map((preset, idx) => (
-                        <div
-                          key={idx}
-                          className="group bg-stone-50 border border-stone-200 p-2 hover:border-[#8B2626] transition-all shadow-xs flex flex-col justify-between"
-                        >
-                          <div>
-                            <div className="aspect-[3/4] bg-stone-200 overflow-hidden relative mb-2">
-                              <img
-                                src={preset.image}
-                                alt={preset.title}
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    {/* Resolved Reel Preview & Configuration */}
+                    {resolvedReelMedia && (
+                      <div className="mt-6 p-5 bg-[#F7F3EC] border border-[#E7DFD5] flex flex-col md:flex-row gap-5">
+                        {/* Video / Embed Preview */}
+                        <div className="w-full md:w-52 aspect-[9/16] max-h-[320px] bg-black relative overflow-hidden shrink-0 border border-stone-400 flex items-center justify-center">
+                          {resolvedReelMedia.videoUrl ? (
+                            <video
+                              src={resolvedReelMedia.videoUrl}
+                              controls
+                              autoPlay
+                              muted
+                              loop
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <img
+                              src={resolvedReelMedia.url}
+                              alt="Reel Cover"
+                              className="w-full h-full object-cover"
+                              referrerPolicy="no-referrer"
+                            />
+                          )}
+                          <div className="absolute top-2 left-2 bg-[#8B2626] text-white text-[9px] font-bold px-2 py-0.5 uppercase tracking-wider flex items-center gap-1">
+                            <Play className="w-2.5 h-2.5 fill-white" />
+                            <span>REEL READY</span>
+                          </div>
+                        </div>
+
+                        {/* Metadata Configuration */}
+                        <div className="flex-1 space-y-3">
+                          <h5 className="font-serif text-sm font-semibold text-[#1C1917]">
+                            Configure Reel Product Drop
+                          </h5>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-[10px] font-semibold uppercase text-stone-500 mb-1">
+                                Reel Product Title
+                              </label>
+                              <input
+                                type="text"
+                                value={reelTitle}
+                                onChange={(e) => setReelTitle(e.target.value)}
+                                placeholder="e.g. High-Rise Denim Try-On Video"
+                                className="w-full px-3 py-1.5 border border-stone-300 text-xs bg-white focus:outline-none focus:border-[#8B2626]"
                               />
-                              <div className="absolute top-1 left-1 bg-black/75 text-white text-[8px] px-1.5 py-0.5 uppercase">
-                                {preset.categoryLabel}
+                            </div>
+
+                            <div>
+                              <label className="block text-[10px] font-semibold uppercase text-stone-500 mb-1">
+                                Target Section / Category
+                              </label>
+                              <select
+                                value={reelCategory}
+                                onChange={(e) => setReelCategory(e.target.value as any)}
+                                className="w-full px-3 py-1.5 border border-stone-300 text-xs bg-white focus:outline-none focus:border-[#8B2626]"
+                              >
+                                <option value="tops">Tops & Shirts</option>
+                                <option value="jeans">Jeans & Denims</option>
+                                <option value="kurtis">Kurti's & Sets</option>
+                                <option value="bottoms">Girls' Bottoms</option>
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="block text-[10px] font-semibold uppercase text-stone-500 mb-1">
+                                Fabric Details
+                              </label>
+                              <input
+                                type="text"
+                                value={reelFabric}
+                                onChange={(e) => setReelFabric(e.target.value)}
+                                placeholder="e.g. 100% Rigid Denim"
+                                className="w-full px-3 py-1.5 border border-stone-300 text-xs bg-white focus:outline-none focus:border-[#8B2626]"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[10px] font-semibold uppercase text-stone-500 mb-1">
+                                Tag Badge
+                              </label>
+                              <select
+                                value={reelTag}
+                                onChange={(e) => setReelTag(e.target.value)}
+                                className="w-full px-3 py-1.5 border border-stone-300 text-xs bg-white focus:outline-none focus:border-[#8B2626]"
+                              >
+                                <option value="REEL DROP">REEL DROP</option>
+                                <option value="VIRAL REEL">VIRAL REEL</option>
+                                <option value="NEW REEL">NEW REEL</option>
+                                <option value="ETHNIC REEL">ETHNIC REEL</option>
+                                <option value="LIVE TRY-ON">LIVE TRY-ON</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap gap-2 pt-3">
+                            <button
+                              onClick={() => handleSaveReelToVaultAndSlot(false)}
+                              className="px-4 py-2 bg-white border border-stone-300 hover:bg-stone-50 text-xs font-semibold uppercase tracking-wider text-stone-800"
+                            >
+                              Save to Vault Only
+                            </button>
+                            <button
+                              onClick={() => handleSaveReelToVaultAndSlot(true)}
+                              className="px-5 py-2 bg-[#8B2626] hover:bg-[#701E1E] text-white text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5 shadow-xs"
+                            >
+                              <Play className="w-3.5 h-3.5 fill-[#D4AF37] text-[#D4AF37]" />
+                              <span>Save & Publish Reel to "{reelCategory.toUpperCase()}"</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Curated Real Boutique Reel Presets */}
+                  <div className="bg-white p-5 sm:p-6 border border-[#E7DFD5]">
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <h4 className="font-serif text-base font-semibold text-[#1C1917]">
+                          Curated In-Store Reel Presets (@clothcollection.agra)
+                        </h4>
+                        <p className="text-xs text-stone-600 font-light">
+                          High-converting boutique video try-ons ready for 1-click publishing.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                      {REAL_BOUTIQUE_REEL_PRESETS.map((preset, idx) => (
+                        <div key={idx} className="border border-stone-200 bg-[#FAF7F2] p-3 flex flex-col justify-between">
+                          <div className="relative aspect-[3/4] overflow-hidden bg-black mb-3">
+                            <img
+                              src={preset.image}
+                              alt={preset.title}
+                              className="w-full h-full object-cover"
+                              referrerPolicy="no-referrer"
+                            />
+                            <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                              <div className="w-10 h-10 rounded-full bg-[#8B2626]/90 text-white flex items-center justify-center shadow-lg border border-[#D4AF37]">
+                                <Play className="w-4 h-4 ml-0.5 fill-white" />
                               </div>
                             </div>
-                            <h5 className="font-serif text-xs font-bold text-[#1C1917] truncate">{preset.title}</h5>
-                            <p className="text-[10px] text-stone-500 truncate">{preset.fabric}</p>
+                            <div className="absolute top-2 left-2 bg-black/80 text-[#D4AF37] text-[9px] font-bold px-2 py-0.5 uppercase">
+                              {preset.tag}
+                            </div>
+                          </div>
+
+                          <div className="space-y-1 mb-3">
+                            <span className="text-[10px] text-[#8B2626] font-semibold uppercase tracking-wider block">
+                              {preset.categoryLabel}
+                            </span>
+                            <h5 className="font-serif text-xs font-semibold text-[#1C1917] line-clamp-2">
+                              {preset.title}
+                            </h5>
+                            <p className="text-[10px] text-stone-500 line-clamp-1">{preset.fabric}</p>
                           </div>
 
                           <button
-                            type="button"
-                            onClick={() => handleAddPresetToVault(preset)}
-                            className="mt-2 w-full py-1.5 bg-white border border-stone-300 hover:bg-[#8B2626] hover:text-white text-[10px] font-semibold uppercase tracking-wider transition-colors flex items-center justify-center gap-1"
+                            onClick={() => handleImportReelPreset(preset)}
+                            className="w-full py-2 bg-[#1C1917] hover:bg-[#8B2626] text-white text-[11px] font-semibold uppercase tracking-wider transition-colors flex items-center justify-center gap-1.5"
                           >
-                            <Plus className="w-3 h-3" />
-                            <span>Add to Vault</span>
+                            <Play className="w-3 h-3 fill-[#D4AF37] text-[#D4AF37]" />
+                            <span>Import & Publish Reel</span>
                           </button>
                         </div>
                       ))}
@@ -854,276 +1249,241 @@ export const PhotoManagerModal: React.FC = () => {
                 </div>
               )}
 
-              {/* TAB 2: REAL PHOTO VAULT (MEDIA LIBRARY) */}
+              {/* TAB 3: REAL MEDIA VAULT */}
               {activeTab === 'vault' && (
-                <div className="space-y-6">
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-stone-200 pb-3">
+                <div className="space-y-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 border border-[#E7DFD5]">
                     <div>
-                      <h4 className="font-serif text-xl text-[#1C1917]">
-                        Real Photo Vault ({mediaLibrary.length} Verified Photos)
+                      <h4 className="font-serif text-lg text-[#1C1917]">
+                        Real Photo & Reel Video Vault ({mediaLibrary.length} Items)
                       </h4>
                       <p className="text-xs text-stone-600 font-light">
-                        Select any real photo and click <strong>"📍 Slot into Website"</strong> to instantly assign it to the Hero Banner, Tops, Jeans, Kurtis, Bottoms, or Instagram grid.
+                        Select any fetched photo or reel to preview or slot directly into any part of the website.
                       </p>
                     </div>
 
-                    <div className="flex gap-2">
+                    {/* Filter Buttons */}
+                    <div className="flex items-center gap-1 bg-[#FAF7F2] p-1 border border-stone-300">
                       <button
-                        type="button"
-                        onClick={() => setActiveTab('fetch-ig')}
-                        className="px-3 py-1.5 bg-[#8B2626] text-white text-xs font-semibold tracking-wider uppercase flex items-center gap-1.5"
+                        onClick={() => setVaultFilter('all')}
+                        className={`px-3 py-1 text-xs font-semibold uppercase ${
+                          vaultFilter === 'all' ? 'bg-[#1C1917] text-white' : 'text-stone-700 hover:bg-stone-200'
+                        }`}
                       >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Fetch More Photos</span>
+                        All ({mediaLibrary.length})
+                      </button>
+                      <button
+                        onClick={() => setVaultFilter('reels')}
+                        className={`px-3 py-1 text-xs font-semibold uppercase flex items-center gap-1 ${
+                          vaultFilter === 'reels' ? 'bg-[#8B2626] text-white' : 'text-stone-700 hover:bg-stone-200'
+                        }`}
+                      >
+                        <Play className="w-2.5 h-2.5 fill-[#D4AF37] text-[#D4AF37]" />
+                        <span>Reels & Videos</span>
+                      </button>
+                      <button
+                        onClick={() => setVaultFilter('photos')}
+                        className={`px-3 py-1 text-xs font-semibold uppercase ${
+                          vaultFilter === 'photos' ? 'bg-[#1C1917] text-white' : 'text-stone-700 hover:bg-stone-200'
+                        }`}
+                      >
+                        Photos
                       </button>
                     </div>
                   </div>
 
-                  {mediaLibrary.length === 0 ? (
-                    <div className="text-center py-16 bg-white border border-dashed border-stone-300 space-y-3">
-                      <FolderOpen className="w-12 h-12 mx-auto text-stone-300" />
-                      <h5 className="font-serif text-base text-stone-700">Real Photo Vault is empty</h5>
-                      <p className="text-xs text-stone-500">
-                        Paste Instagram URLs or upload real photos from device to populate your vault.
-                      </p>
+                  {/* Grid of Vault Items */}
+                  {filteredVault.length === 0 ? (
+                    <div className="text-center py-16 bg-white border border-[#E7DFD5] space-y-3">
+                      <FolderOpen className="w-12 h-12 text-stone-300 mx-auto" />
+                      <p className="text-stone-600 text-sm">No items matching current filter.</p>
                       <button
-                        type="button"
                         onClick={() => setActiveTab('fetch-ig')}
-                        className="px-4 py-2 bg-[#1C1917] text-white text-xs font-semibold uppercase tracking-wider"
+                        className="px-5 py-2 bg-[#8B2626] text-white text-xs font-semibold uppercase tracking-wider"
                       >
-                        Fetch Instagram Photos Now
+                        Fetch New Photos & Reels
                       </button>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                      {mediaLibrary.map((item) => (
-                        <div
-                          key={item.id}
-                          className="group bg-white border border-[#E7DFD5] p-2.5 shadow-xs hover:border-[#8B2626] transition-all flex flex-col justify-between"
-                        >
-                          <div>
-                            <div className="aspect-[3/4] bg-stone-100 overflow-hidden relative mb-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3.5">
+                      {filteredVault.map((item) => {
+                        const isReel = item.mediaType === 'reel' || item.mediaType === 'video' || item.source === 'reel';
+                        return (
+                          <div
+                            key={item.id}
+                            className="group relative bg-white border border-stone-300 shadow-xs flex flex-col overflow-hidden hover:border-[#8B2626] transition-all"
+                          >
+                            <div className="aspect-[3/4] relative overflow-hidden bg-stone-200">
                               <img
                                 src={item.url}
                                 alt={item.title}
                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                referrerPolicy="no-referrer"
                               />
-                              <div className="absolute top-1 left-1 bg-black/75 text-white text-[8px] px-1.5 py-0.5 uppercase font-mono">
-                                {item.source}
+
+                              {/* Reel / Photo Badge */}
+                              <div className="absolute top-2 left-2 flex items-center gap-1 bg-black/85 text-white text-[9px] font-bold px-2 py-0.5 uppercase tracking-wider">
+                                {isReel && <Play className="w-2.5 h-2.5 fill-[#D4AF37] text-[#D4AF37]" />}
+                                <span>{isReel ? 'REEL' : 'PHOTO'}</span>
+                              </div>
+
+                              {/* Hover Quick Actions */}
+                              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 p-2">
+                                <button
+                                  onClick={() => setPreviewMediaItem(item)}
+                                  className="w-full py-1.5 bg-white text-stone-900 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1 hover:bg-[#FAF7F2]"
+                                >
+                                  <Eye className="w-3 h-3 text-[#8B2626]" />
+                                  <span>Preview</span>
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setSelectedVaultItem(item);
+                                    setSlotTitle(item.title);
+                                  }}
+                                  className="w-full py-1.5 bg-[#8B2626] text-white text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1 hover:bg-[#701E1E]"
+                                >
+                                  <MousePointerClick className="w-3 h-3 text-[#D4AF37]" />
+                                  <span>Slot into Website</span>
+                                </button>
                               </div>
                             </div>
-                            <h5 className="font-serif text-xs font-bold text-[#1C1917] truncate">{item.title}</h5>
-                            <p className="text-[10px] text-stone-400 truncate">
-                              {new Date(item.importedAt).toLocaleDateString()}
-                            </p>
-                          </div>
 
-                          <div className="space-y-1.5 mt-3 pt-2 border-t border-stone-100">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedVaultItem(item);
-                                setSlotTitle(item.title);
-                              }}
-                              className="w-full py-2 bg-[#8B2626] hover:bg-[#6D1E1E] text-white text-[11px] font-semibold uppercase tracking-wider transition-colors flex items-center justify-center gap-1.5 shadow-xs"
-                            >
-                              <MousePointerClick className="w-3.5 h-3.5 text-[#D4AF37]" />
-                              <span>Slot into Website</span>
-                            </button>
-
-                            <div className="flex items-center justify-between pt-1">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  navigator.clipboard.writeText(item.url);
-                                  showToast('📋 Image URL copied!');
-                                }}
-                                className="text-[10px] text-stone-600 hover:text-[#8B2626] flex items-center gap-0.5"
-                              >
-                                <Copy className="w-3 h-3" />
-                                <span>Copy Link</span>
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => removeFromMediaLibrary(item.id)}
-                                className="text-[10px] text-red-600 hover:text-red-800 flex items-center gap-0.5"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                                <span>Delete</span>
-                              </button>
+                            <div className="p-2.5 flex flex-col justify-between flex-1 bg-white">
+                              <p className="text-xs font-serif text-[#1C1917] line-clamp-1 mb-1" title={item.title}>
+                                {item.title}
+                              </p>
+                              <div className="flex items-center justify-between text-[10px] text-stone-500">
+                                <span>{item.source.toUpperCase()}</span>
+                                <button
+                                  onClick={() => removeFromMediaLibrary(item.id)}
+                                  className="text-stone-400 hover:text-red-600 p-1"
+                                  title="Delete from Vault"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
               )}
 
-              {/* TAB 3: VISUAL WEBSITE SLOT MATRIX ("JAHA JAHA IMAGE ADD KARNI HAI WAHA ADD KAREIN") */}
+              {/* TAB 4: WEBSITE SLOT MATRIX */}
               {activeTab === 'slot-matrix' && (
-                <div className="space-y-8 max-w-5xl">
-                  <div>
-                    <h4 className="font-serif text-xl text-[#1C1917]">
-                      Website Visual Slot Matrix
-                    </h4>
-                    <p className="text-xs text-stone-600 font-light">
-                      Har website section ka visual map. Kisi bhi slot ki photo change karne ke liye <strong>"Replace Photo"</strong> par tap karein aur Vault se real photo select karein.
-                    </p>
-                  </div>
-
-                  {/* SLOT SECTION 1: HERO BANNER */}
-                  <div className="bg-white p-5 border border-[#E7DFD5] shadow-xs space-y-3">
-                    <div className="flex items-center justify-between border-b border-stone-200 pb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="w-6 h-6 rounded-full bg-[#8B2626] text-white text-xs font-bold flex items-center justify-center">1</span>
-                        <h5 className="font-serif text-sm font-bold text-[#1C1917]">Main Hero Header Banner Slot</h5>
-                      </div>
-                      <span className="text-[11px] text-stone-500 uppercase">Top of Homepage</span>
-                    </div>
-
-                    <div className="flex flex-col sm:flex-row gap-4 items-center">
-                      <div className="w-full sm:w-64 h-36 bg-stone-900 overflow-hidden relative border border-stone-300">
-                        <img src={heroImage} alt="Hero Banner" className="w-full h-full object-cover" />
-                        <div className="absolute inset-0 bg-black/30 flex items-center justify-center text-white text-xs font-semibold">
-                          Active Hero Banner
-                        </div>
-                      </div>
-
-                      <div className="flex-1 space-y-2">
-                        <p className="text-xs text-stone-600">
-                          Full-width atmospheric luxury banner shown right as visitors land on the boutique website.
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setReplacingSlot({ type: 'hero' })}
-                            className="px-4 py-2 bg-[#8B2626] text-white text-xs font-semibold uppercase tracking-wider hover:bg-[#6D1E1E] transition-colors flex items-center gap-1.5"
-                          >
-                            <FolderOpen className="w-3.5 h-3.5 text-[#D4AF37]" />
-                            <span>Pick from Real Vault</span>
-                          </button>
-                        </div>
-                      </div>
+                <div className="space-y-6 max-w-5xl mx-auto">
+                  <div className="bg-white p-4 border border-[#E7DFD5] flex items-center justify-between">
+                    <div>
+                      <h4 className="font-serif text-lg text-[#1C1917]">Visual Website Slot Matrix</h4>
+                      <p className="text-xs text-stone-600 font-light">
+                        Live visual map of all website sections. Click "Replace" on any slot to assign a real photo or reel from your vault.
+                      </p>
                     </div>
                   </div>
 
-                  {/* SLOT SECTION 2: 4 CORE FOCUS CATEGORY COVERS */}
-                  <div className="bg-white p-5 border border-[#E7DFD5] shadow-xs space-y-3">
+                  {/* Section 1: Hero Banner */}
+                  <div className="bg-white p-4 border border-[#E7DFD5] space-y-3">
                     <div className="flex items-center justify-between border-b border-stone-200 pb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="w-6 h-6 rounded-full bg-[#8B2626] text-white text-xs font-bold flex items-center justify-center">2</span>
-                        <h5 className="font-serif text-sm font-bold text-[#1C1917]">4 Focus Category Cover Photos</h5>
-                      </div>
-                      <span className="text-[11px] text-stone-500 uppercase">Featured Department Tiles</span>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                      {categories.map((cat) => (
-                        <div key={cat.id} className="bg-stone-50 border border-stone-200 p-2.5 space-y-2">
-                          <div className="aspect-[4/3] bg-stone-900 relative overflow-hidden">
-                            <img src={cat.image} alt={cat.title} className="w-full h-full object-cover" />
-                            <div className="absolute bottom-1.5 left-1.5 bg-black/80 text-white text-[9px] px-2 py-0.5 font-bold uppercase">
-                              {cat.title}
-                            </div>
-                          </div>
-
-                          <div className="text-center">
-                            <button
-                              type="button"
-                              onClick={() => setReplacingSlot({ type: 'category', categoryId: cat.id, categoryTitle: cat.title })}
-                              className="w-full py-1.5 bg-white border border-stone-300 hover:border-[#8B2626] hover:text-[#8B2626] text-[10px] font-semibold uppercase tracking-wider transition-colors flex items-center justify-center gap-1"
-                            >
-                              <FolderOpen className="w-3 h-3" />
-                              <span>Replace Cover</span>
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* SLOT SECTION 3: THE NEW EDIT OUTFITS */}
-                  <div className="bg-white p-5 border border-[#E7DFD5] shadow-xs space-y-3">
-                    <div className="flex items-center justify-between border-b border-stone-200 pb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="w-6 h-6 rounded-full bg-[#8B2626] text-white text-xs font-bold flex items-center justify-center">3</span>
-                        <h5 className="font-serif text-sm font-bold text-[#1C1917]">The New Edit — Active Weekly Outfits ({newArrivals.length})</h5>
-                      </div>
+                      <span className="text-xs font-bold text-[#8B2626] tracking-widest uppercase">
+                        1. Main Hero Header Banner
+                      </span>
                       <button
-                        type="button"
-                        onClick={() => setActiveTab('fetch-ig')}
-                        className="px-3 py-1 bg-[#8B2626] text-white text-[10px] font-semibold uppercase tracking-wider flex items-center gap-1"
+                        onClick={() => setReplacingSlot({ type: 'hero' })}
+                        className="px-3 py-1 bg-[#1C1917] text-white text-[10px] font-semibold uppercase hover:bg-[#8B2626]"
                       >
-                        <Plus className="w-3 h-3" />
-                        <span>Add New Outfit</span>
+                        Replace Hero Photo
                       </button>
                     </div>
+                    <div className="aspect-[21/9] max-h-48 overflow-hidden bg-stone-300 relative border border-stone-200">
+                      <img src={heroImage} alt="Hero" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      <div className="absolute bottom-2 left-2 bg-black/80 text-white text-[10px] px-2 py-1">
+                        Active Hero Photo (Sadar Bazar Store / Signature Model)
+                      </div>
+                    </div>
+                  </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                      {newArrivals.map((item) => (
-                        <div key={item.id} className="bg-stone-50 border border-stone-200 p-2.5 flex gap-3">
-                          <img src={item.image} alt={item.title} className="w-16 h-20 object-cover bg-stone-200 shrink-0" />
-                          <div className="flex-1 min-w-0 flex flex-col justify-between">
-                            <div>
-                              <span className="text-[9px] font-bold text-[#8B2626] uppercase">{item.tag}</span>
-                              <h6 className="font-serif text-xs font-bold text-[#1C1917] truncate">{item.title}</h6>
-                              <p className="text-[10px] text-stone-500 truncate">{item.details?.fabric || item.categoryLabel}</p>
-                            </div>
-
-                            <div className="flex items-center gap-2 pt-1 border-t border-stone-200">
-                              <button
-                                type="button"
-                                onClick={() => setReplacingSlot({ type: 'replaceNewArrival', itemId: item.id })}
-                                className="text-[10px] text-stone-700 hover:text-[#8B2626] underline font-medium"
-                              >
-                                Replace Photo
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (confirm(`Remove outfit "${item.title}" from website?`)) {
-                                    deleteCustomItem(item.id);
-                                  }
-                                }}
-                                className="text-[10px] text-red-600 hover:text-red-800 ml-auto"
-                              >
-                                Remove
-                              </button>
-                            </div>
+                  {/* Section 2: 4 Category Covers */}
+                  <div className="bg-white p-4 border border-[#E7DFD5] space-y-3">
+                    <span className="text-xs font-bold text-[#8B2626] tracking-widest uppercase block border-b border-stone-200 pb-2">
+                      2. 4 Focus Category Covers
+                    </span>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      {categories.map((cat) => (
+                        <div key={cat.id} className="border border-stone-200 p-2 flex flex-col justify-between bg-[#FAF7F2]">
+                          <div className="aspect-[3/4] bg-stone-200 overflow-hidden mb-2 relative">
+                            <img src={cat.image} alt={cat.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                           </div>
+                          <p className="text-xs font-serif font-semibold text-stone-900 mb-1">{cat.title}</p>
+                          <button
+                            onClick={() => setReplacingSlot({ type: 'category', categoryId: cat.id })}
+                            className="w-full py-1 bg-stone-800 hover:bg-[#8B2626] text-white text-[10px] uppercase font-semibold"
+                          >
+                            Replace Cover
+                          </button>
                         </div>
                       ))}
                     </div>
                   </div>
 
-                  {/* SLOT SECTION 4: INSTAGRAM FEED 6 TILES */}
-                  <div className="bg-white p-5 border border-[#E7DFD5] shadow-xs space-y-3">
+                  {/* Section 3: The New Edit (Live Drops) */}
+                  <div className="bg-white p-4 border border-[#E7DFD5] space-y-3">
                     <div className="flex items-center justify-between border-b border-stone-200 pb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="w-6 h-6 rounded-full bg-[#8B2626] text-white text-xs font-bold flex items-center justify-center">4</span>
-                        <h5 className="font-serif text-sm font-bold text-[#1C1917]">Instagram Live Grid (6 Feed Slots)</h5>
-                      </div>
-                      <span className="text-[11px] text-stone-500 uppercase">@clothcollection.agra</span>
+                      <span className="text-xs font-bold text-[#8B2626] tracking-widest uppercase">
+                        3. The New Edit ({newArrivals.length} Active Product Outfits & Reels)
+                      </span>
+                      <button
+                        onClick={() => {
+                          setSelectedVaultItem(mediaLibrary[0] || null);
+                          setSlotTarget('new-arrival');
+                        }}
+                        className="px-3 py-1 bg-[#8B2626] text-white text-[10px] font-semibold uppercase hover:bg-[#701E1E]"
+                      >
+                        + Add New Outfit to Edit
+                      </button>
                     </div>
-
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
-                      {instagramPosts.map((post, idx) => (
-                        <div key={post.id} className="bg-stone-50 border border-stone-200 p-2 space-y-1.5">
-                          <div className="aspect-square bg-stone-900 relative overflow-hidden">
-                            <img src={post.image} alt="IG Post" className="w-full h-full object-cover" />
-                            <div className="absolute top-1 left-1 bg-black/80 text-white text-[8px] px-1 py-0.5 font-mono">
-                              Slot #{idx + 1}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                      {newArrivals.map((item) => (
+                        <div key={item.id} className="border border-stone-200 p-2 flex flex-col justify-between bg-[#FAF7F2]">
+                          <div className="aspect-[3/4] bg-stone-200 overflow-hidden mb-2 relative">
+                            <img src={item.image} alt={item.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            <div className="absolute top-1 left-1 bg-black/80 text-white text-[8px] px-1 font-semibold">
+                              {item.tag}
                             </div>
                           </div>
-
+                          <p className="text-[11px] font-serif font-semibold text-stone-900 line-clamp-1 mb-1">{item.title}</p>
                           <button
-                            type="button"
-                            onClick={() => setReplacingSlot({ type: 'instagramPost', postId: post.id })}
-                            className="w-full py-1 bg-white border border-stone-300 hover:bg-[#8B2626] hover:text-white text-[9px] font-semibold uppercase tracking-wider transition-colors"
+                            onClick={() => setReplacingSlot({ type: 'replaceNewArrival', itemId: item.id })}
+                            className="w-full py-1 bg-stone-800 hover:bg-[#8B2626] text-white text-[10px] uppercase font-semibold"
                           >
-                            Replace Tile
+                            Replace Photo
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Section 4: Instagram 6-Tile Feed */}
+                  <div className="bg-white p-4 border border-[#E7DFD5] space-y-3">
+                    <span className="text-xs font-bold text-[#8B2626] tracking-widest uppercase block border-b border-stone-200 pb-2">
+                      4. Instagram Social Grid (6 Live Tiles)
+                    </span>
+                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                      {instagramPosts.map((post, idx) => (
+                        <div key={post.id} className="border border-stone-200 p-1.5 flex flex-col justify-between bg-[#FAF7F2]">
+                          <div className="aspect-square bg-stone-200 overflow-hidden mb-1.5 relative">
+                            <img src={post.image} alt="IG Post" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            <div className="absolute top-1 left-1 bg-black/80 text-[#D4AF37] text-[8px] px-1 font-bold">
+                              #{idx + 1}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => setReplacingSlot({ type: 'instagramPost', postId: post.id })}
+                            className="w-full py-1 bg-stone-800 hover:bg-[#8B2626] text-white text-[9px] uppercase font-semibold"
+                          >
+                            Replace #{idx + 1}
                           </button>
                         </div>
                       ))}
@@ -1132,152 +1492,212 @@ export const PhotoManagerModal: React.FC = () => {
                 </div>
               )}
 
-              {/* TAB 4: CLOUD SYNC & STATIC CODE EXPORT */}
+              {/* TAB 5: SYNC & EXPORT */}
               {activeTab === 'export' && (
-                <div className="space-y-6 max-w-4xl">
-                  <div>
-                    <h4 className="font-serif text-xl text-[#1C1917]">
-                      Cloud Database & Static Code Exporter
-                    </h4>
-                    <p className="text-xs text-stone-600 font-light">
-                      Real-time Firebase Firestore database management & 1-click JSON code export.
+                <div className="space-y-6 max-w-3xl mx-auto">
+                  <div className="bg-white p-6 border border-[#E7DFD5] space-y-4">
+                    <div className="flex items-center gap-2">
+                      <Database className="w-5 h-5 text-[#8B2626]" />
+                      <h4 className="font-serif text-lg font-normal text-[#1C1917]">
+                        Firebase Firestore Live Persistence & Static Backup
+                      </h4>
+                    </div>
+                    <p className="text-xs text-stone-600 font-light leading-relaxed">
+                      Every photo and reel update is synced in real time to your Firebase Firestore database so your client sees the real boutique photos immediately.
                     </p>
-                  </div>
 
-                  {/* Firestore Status */}
-                  <div className="bg-white p-5 border border-[#E7DFD5] space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className={`p-2.5 rounded-full ${isFirebaseLive ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                          <Database className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <h5 className="font-serif text-sm font-bold text-[#1C1917]">
-                            {isFirebaseLive ? 'Firebase Firestore Connected & Real-Time Live' : 'Operating in Local Resilient Mode'}
-                          </h5>
-                          <p className="text-xs text-stone-500">
-                            Project DB: ai-studio-clothescollectio-c9d264f5-d366-4e4a-bc5d-0f085afa6c33
-                          </p>
-                        </div>
+                    <div className="p-4 bg-[#FAF7F2] border border-stone-300 space-y-2 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-stone-500">Database Status:</span>
+                        <span className="font-semibold text-emerald-700 font-mono">
+                          {isFirebaseLive ? 'CONNECTED (Live Sync Active)' : 'Local Storage Fallback'}
+                        </span>
                       </div>
+                      <div className="flex justify-between">
+                        <span className="text-stone-500">Total Media Library Items:</span>
+                        <span className="font-semibold">{mediaLibrary.length} Photos & Reels</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-stone-500">Active Published Outfits:</span>
+                        <span className="font-semibold">{newArrivals.length} Outfits</span>
+                      </div>
+                    </div>
 
+                    <div className="flex flex-wrap gap-3 pt-2">
                       <button
-                        type="button"
                         onClick={syncAllToFirestore}
                         disabled={isSyncing}
-                        className="px-4 py-2 bg-[#1C1917] hover:bg-[#8B2626] text-white text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5"
+                        className="px-5 py-2.5 bg-[#8B2626] hover:bg-[#701E1E] text-white text-xs font-semibold tracking-wider uppercase flex items-center gap-2"
                       >
                         <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-                        <span>{isSyncing ? 'Syncing...' : 'Force Sync Now'}</span>
+                        <span>Force Sync to Firestore</span>
                       </button>
-                    </div>
-                  </div>
-
-                  {/* 1-Click Static JSON Code Exporter (For future DB removal) */}
-                  <div className="bg-white p-5 border border-[#E7DFD5] space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h5 className="font-serif text-sm font-bold text-[#1C1917]">
-                          Copy Static Configuration JSON
-                        </h5>
-                        <p className="text-xs text-stone-600">
-                          If client decides to remove the database later, copy this JSON to preserve all real photos and items permanently as static code.
-                        </p>
-                      </div>
 
                       <button
-                        type="button"
                         onClick={handleExportData}
-                        className="px-4 py-2 bg-[#8B2626] hover:bg-[#6D1E1E] text-white text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5"
+                        className="px-5 py-2.5 bg-[#1C1917] hover:bg-stone-800 text-white text-xs font-semibold tracking-wider uppercase flex items-center gap-2"
                       >
-                        {copiedCode ? <Check className="w-4 h-4 text-[#D4AF37]" /> : <Copy className="w-4 h-4 text-[#D4AF37]" />}
-                        <span>{copiedCode ? 'Copied to Clipboard!' : 'Copy Static JSON'}</span>
+                        {copiedCode ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-[#D4AF37]" />}
+                        <span>{copiedCode ? 'Copied Static JSON!' : 'Copy Static JSON Code'}</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          if (confirm('Reset boutique photos back to original defaults?')) {
+                            resetToDefaults();
+                          }
+                        }}
+                        className="px-4 py-2.5 border border-red-300 text-red-700 hover:bg-red-50 text-xs font-semibold uppercase tracking-wider"
+                      >
+                        Reset Defaults
                       </button>
                     </div>
-                  </div>
-
-                  {/* Reset Defaults */}
-                  <div className="bg-stone-50 p-4 border border-stone-200 flex items-center justify-between">
-                    <div>
-                      <p className="text-xs font-medium text-stone-800">Reset Website to Curated Boutique Defaults</p>
-                      <p className="text-[11px] text-stone-500">Restores high-res default Tops, Jeans, Kurtis, and Bottoms presets.</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (confirm('Reset all website images and items to curated boutique defaults?')) {
-                          resetToDefaults();
-                          showToast('🔄 Reset to default boutique presets');
-                        }
-                      }}
-                      className="px-3 py-1.5 border border-stone-400 text-stone-700 hover:bg-stone-200 text-xs font-semibold uppercase"
-                    >
-                      Reset Defaults
-                    </button>
                   </div>
                 </div>
               )}
             </div>
           </div>
         )}
-      </div>
 
-      {/* POPUP 1: SLOT PLACEMENT DRAWER (Triggered when user clicks "Slot into Website" on a Vault Photo) */}
-      {selectedVaultItem && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-fadeIn">
-          <div className="bg-white max-w-lg w-full p-5 border border-[#D4AF37] shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-stone-200 pb-2">
-              <h4 className="font-serif text-base font-bold text-[#1C1917]">
-                📍 Place Photo into Website Slot
-              </h4>
-              <button onClick={() => setSelectedVaultItem(null)} className="p-1 text-stone-400 hover:text-stone-800">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+        {/* VAULT IN-MODAL VIDEO / PHOTO PREVIEW MODAL */}
+        {previewMediaItem && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+            <div className="bg-[#1C1917] border border-stone-700 text-white w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col">
+              <div className="p-3 bg-stone-900 flex items-center justify-between border-b border-stone-800">
+                <span className="text-xs font-serif">{previewMediaItem.title}</span>
+                <button onClick={() => setPreviewMediaItem(null)} className="p-1 hover:text-[#D4AF37]">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
 
-            <div className="flex gap-3">
-              <img
-                src={selectedVaultItem.url}
-                alt="Selected"
-                className="w-20 h-28 object-cover bg-stone-100 border border-stone-300 shrink-0"
-              />
-              <div className="flex-1 space-y-2">
-                <label className="text-xs font-medium text-stone-700 block">Choose Website Destination</label>
-                <select
-                  value={slotTarget}
-                  onChange={(e) => setSlotTarget(e.target.value)}
-                  className="w-full text-xs px-3 py-2 border border-stone-300 bg-white font-medium focus:border-[#8B2626] focus:outline-none"
+              <div className="p-4 flex items-center justify-center bg-black max-h-[60vh] overflow-hidden">
+                {previewMediaItem.videoUrl ? (
+                  <video src={previewMediaItem.videoUrl} controls autoPlay className="max-h-[50vh] max-w-full" />
+                ) : previewMediaItem.embedUrl ? (
+                  <iframe src={previewMediaItem.embedUrl} title="Preview" className="w-full h-96 border-0" />
+                ) : (
+                  <img src={previewMediaItem.url} alt="Preview" className="max-h-[50vh] object-contain" referrerPolicy="no-referrer" />
+                )}
+              </div>
+
+              <div className="p-3 bg-stone-900 flex justify-end gap-2">
+                <button
+                  onClick={() => {
+                    setSelectedVaultItem(previewMediaItem);
+                    setPreviewMediaItem(null);
+                  }}
+                  className="px-4 py-2 bg-[#8B2626] text-white text-xs font-semibold uppercase tracking-wider"
                 >
-                  <option value="hero">👑 Main Hero Header Banner</option>
-                  <option value="category-cover">🎯 4 Focus Category Cover Photo</option>
-                  <option value="new-arrival">🛍️ Add as New Outfit in "The New Edit"</option>
-                  <option value="instagram-feed">📸 Replace Tile in Instagram 6-Grid</option>
-                  <option value="moodboard">🖼️ Add to Weekly Moodboard Gallery</option>
-                </select>
+                  Slot into Website
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
-                {(slotTarget === 'category-cover' || slotTarget === 'new-arrival') && (
+        {/* 1-CLICK SLOT PLACEMENT MODAL */}
+        {selectedVaultItem && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <div className="bg-white border border-[#E7DFD5] w-full max-w-lg p-6 shadow-2xl space-y-4">
+              <div className="flex items-center justify-between border-b border-stone-200 pb-3">
+                <h4 className="font-serif text-base font-semibold text-[#1C1917]">
+                  📍 Assign Item to Website Section
+                </h4>
+                <button onClick={() => setSelectedVaultItem(null)} className="p-1 text-stone-500 hover:text-black">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="flex gap-4 items-center bg-[#FAF7F2] p-3 border border-stone-200">
+                <div className="w-16 h-20 bg-stone-300 shrink-0 overflow-hidden relative">
+                  <img src={selectedVaultItem.url} alt="Target" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                </div>
+                <div>
+                  <p className="text-xs font-serif font-bold text-stone-900 line-clamp-1">{selectedVaultItem.title}</p>
+                  <span className="text-[10px] text-stone-500 uppercase tracking-wider">
+                    {selectedVaultItem.mediaType === 'reel' ? '🎬 Instagram Reel' : '📸 Real Photo'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase text-stone-600 mb-1">
+                    Select Target Website Section
+                  </label>
+                  <select
+                    value={slotTarget}
+                    onChange={(e) => setSlotTarget(e.target.value)}
+                    className="w-full px-3 py-2 border border-stone-300 text-xs focus:outline-none focus:border-[#8B2626]"
+                  >
+                    <option value="new-arrival">The New Edit (Active Products Grid)</option>
+                    <option value="hero">Main Hero Header Banner</option>
+                    <option value="category-cover">4 Focus Category Covers</option>
+                    <option value="instagram-feed">Instagram 6-Tile Live Social Feed</option>
+                    <option value="moodboard">Weekly Moodboard Editorial</option>
+                  </select>
+                </div>
+
+                {slotTarget === 'new-arrival' && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-semibold uppercase text-stone-500 mb-1">
+                        Category
+                      </label>
+                      <select
+                        value={slotCategory}
+                        onChange={(e) => setSlotCategory(e.target.value as any)}
+                        className="w-full px-2.5 py-1.5 border border-stone-300 text-xs"
+                      >
+                        <option value="tops">Tops & Shirts</option>
+                        <option value="jeans">Jeans & Denims</option>
+                        <option value="kurtis">Kurti's & Sets</option>
+                        <option value="bottoms">Girls' Bottoms</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-semibold uppercase text-stone-500 mb-1">
+                        Tag Badge
+                      </label>
+                      <input
+                        type="text"
+                        value={slotTag}
+                        onChange={(e) => setSlotTag(e.target.value)}
+                        placeholder="REEL DROP / NEW ARRIVAL"
+                        className="w-full px-2.5 py-1.5 border border-stone-300 text-xs"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {slotTarget === 'category-cover' && (
                   <div>
-                    <label className="text-xs font-medium text-stone-700 block mb-1">Target Category</label>
+                    <label className="block text-[10px] font-semibold uppercase text-stone-500 mb-1">
+                      Choose Category to Update
+                    </label>
                     <select
                       value={slotCategory}
                       onChange={(e) => setSlotCategory(e.target.value as any)}
-                      className="w-full text-xs px-3 py-2 border border-stone-300 bg-white font-medium"
+                      className="w-full px-2.5 py-1.5 border border-stone-300 text-xs"
                     >
-                      <option value="tops">👚 Tops & Shirts</option>
-                      <option value="jeans">👖 Jeans & Denims</option>
-                      <option value="kurtis">👗 Kurti's & Tunics</option>
-                      <option value="bottoms">🩳 Girls' Bottoms & Trousers</option>
+                      <option value="tops">Tops & Shirts Cover</option>
+                      <option value="jeans">Jeans & Denims Cover</option>
+                      <option value="kurtis">Kurti's & Sets Cover</option>
+                      <option value="bottoms">Girls' Bottoms Cover</option>
                     </select>
                   </div>
                 )}
 
                 {slotTarget === 'instagram-feed' && (
                   <div>
-                    <label className="text-xs font-medium text-stone-700 block mb-1">Instagram Feed Tile Slot</label>
+                    <label className="block text-[10px] font-semibold uppercase text-stone-500 mb-1">
+                      Choose Instagram Tile to Replace
+                    </label>
                     <select
                       value={slotIgPostIndex}
                       onChange={(e) => setSlotIgPostIndex(Number(e.target.value))}
-                      className="w-full text-xs px-3 py-2 border border-stone-300 bg-white font-medium"
+                      className="w-full px-2.5 py-1.5 border border-stone-300 text-xs"
                     >
                       <option value={0}>Tile #1 (Top Left)</option>
                       <option value={1}>Tile #2</option>
@@ -1289,100 +1709,71 @@ export const PhotoManagerModal: React.FC = () => {
                   </div>
                 )}
               </div>
-            </div>
 
-            {slotTarget === 'new-arrival' && (
-              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-stone-100">
-                <div>
-                  <label className="text-[11px] font-medium text-stone-700 block mb-1">Outfit Title</label>
-                  <input
-                    type="text"
-                    value={slotTitle}
-                    onChange={(e) => setSlotTitle(e.target.value)}
-                    placeholder="e.g. Korean Ribbed Crop Top"
-                    className="w-full text-xs px-2.5 py-1.5 border border-stone-300"
-                  />
-                </div>
-                <div>
-                  <label className="text-[11px] font-medium text-stone-700 block mb-1">Fabric & Fit</label>
-                  <input
-                    type="text"
-                    value={slotFabric}
-                    onChange={(e) => setSlotFabric(e.target.value)}
-                    placeholder="e.g. 100% Rigid Denim"
-                    className="w-full text-xs px-2.5 py-1.5 border border-stone-300"
-                  />
-                </div>
-              </div>
-            )}
-
-            <div className="flex justify-end gap-2 pt-3 border-t border-stone-200">
-              <button
-                type="button"
-                onClick={() => setSelectedVaultItem(null)}
-                className="px-4 py-2 border border-stone-300 text-stone-700 text-xs font-semibold uppercase"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleExecuteSlotPlacement}
-                className="px-6 py-2 bg-[#8B2626] hover:bg-[#6D1E1E] text-white text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5"
-              >
-                <CheckCircle2 className="w-4 h-4 text-[#D4AF37]" />
-                <span>Apply Photo to Website</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* POPUP 2: PICK FROM VAULT FOR DIRECT SLOT REPLACEMENT */}
-      {replacingSlot && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-fadeIn">
-          <div className="bg-[#FAF7F2] max-w-2xl w-full p-5 border border-[#D4AF37] shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
-            <div className="flex items-center justify-between border-b border-stone-200 pb-2 shrink-0">
-              <div>
-                <h4 className="font-serif text-base font-bold text-[#1C1917]">
-                  Select Real Photo from Vault for Slot
-                </h4>
-                <p className="text-xs text-stone-500">
-                  Target: {replacingSlot.type.toUpperCase()}
-                </p>
-              </div>
-              <button onClick={() => setReplacingSlot(null)} className="p-1 text-stone-400 hover:text-stone-800">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto grid grid-cols-3 sm:grid-cols-4 gap-3 p-1">
-              {mediaLibrary.map((item) => (
-                <div
-                  key={item.id}
-                  onClick={() => handleApplyPhotoToMatrixSlot(item.url)}
-                  className="group cursor-pointer bg-white border border-stone-200 p-2 hover:border-[#8B2626] transition-all flex flex-col justify-between"
+              <div className="flex justify-end gap-2 pt-3 border-t border-stone-200">
+                <button
+                  onClick={() => setSelectedVaultItem(null)}
+                  className="px-4 py-2 border border-stone-300 text-xs font-semibold uppercase text-stone-700"
                 >
-                  <div className="aspect-[3/4] bg-stone-100 overflow-hidden mb-1">
-                    <img src={item.url} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-                  </div>
-                  <p className="text-[10px] font-medium text-stone-800 truncate">{item.title}</p>
-                  <span className="text-[9px] text-[#8B2626] font-bold mt-1 block">Click to Select →</span>
-                </div>
-              ))}
-            </div>
-
-            <div className="flex justify-end pt-2 border-t border-stone-200 shrink-0">
-              <button
-                type="button"
-                onClick={() => setReplacingSlot(null)}
-                className="px-4 py-2 border border-stone-300 text-stone-700 text-xs font-semibold uppercase"
-              >
-                Cancel
-              </button>
+                  Cancel
+                </button>
+                <button
+                  onClick={handleExecuteSlotPlacement}
+                  className="px-5 py-2 bg-[#8B2626] hover:bg-[#701E1E] text-white text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Assign Live to Website</span>
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {/* DIRECT MATRIX REPLACEMENT PICKER MODAL */}
+        {replacingSlot && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+            <div className="bg-[#FAF7F2] border border-[#E7DFD5] w-full max-w-2xl p-6 shadow-2xl flex flex-col max-h-[85vh]">
+              <div className="flex items-center justify-between border-b border-stone-200 pb-3 mb-4">
+                <h4 className="font-serif text-base font-semibold text-[#1C1917]">
+                  Pick Photo or Reel from Vault to Replace Slot
+                </h4>
+                <button onClick={() => setReplacingSlot(null)} className="p-1 text-stone-500 hover:text-black">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto grid grid-cols-3 sm:grid-cols-4 gap-3 p-1">
+                {mediaLibrary.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => handleApplyPhotoToMatrixSlot(item.url, item)}
+                    className="group border border-stone-300 bg-white p-1 hover:border-[#8B2626] transition-all text-left flex flex-col"
+                  >
+                    <div className="aspect-[3/4] bg-stone-200 overflow-hidden mb-1 relative">
+                      <img src={item.url} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" referrerPolicy="no-referrer" />
+                      {item.mediaType === 'reel' && (
+                        <div className="absolute top-1 left-1 bg-[#8B2626] text-white text-[8px] px-1 font-bold">
+                          REEL
+                        </div>
+                      )}
+                    </div>
+                    <span className="text-[10px] font-serif line-clamp-1 text-stone-800">{item.title}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="pt-3 border-t border-stone-200 flex justify-end">
+                <button
+                  onClick={() => setReplacingSlot(null)}
+                  className="px-4 py-2 bg-stone-800 text-white text-xs font-semibold uppercase"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
